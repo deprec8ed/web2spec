@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from .config import RunConfig
+from .pipeline import run_pipeline
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Crawl a website into structured documentation artifacts.")
+    parser.add_argument("url", help="Starting URL to crawl.")
+    parser.add_argument("--output-dir", default="outputs/run", help="Directory for generated artifacts.")
+    parser.add_argument("--depth-limit", type=int, default=2, help="Maximum crawl depth from the start URL.")
+    parser.add_argument(
+        "--provider",
+        choices=("azure-openai", "openai", "anthropic"),
+        default="azure-openai",
+        help="Multimodal LLM provider.",
+    )
+    parser.add_argument("--model", default=None, help="Override the model name.")
+    parser.add_argument("--max-pages", type=int, default=20, help="Maximum pages to queue for the PoC.")
+    parser.add_argument("--skip-analysis", action="store_true", help="Skip the LLM analysis phase.")
+    parser.add_argument("--no-overlay", action="store_true", help="Skip annotated screenshot generation.")
+    parser.add_argument("--show-browser", action="store_true", help="Run Chromium in headed mode.")
+    parser.add_argument(
+        "--browser-channel",
+        choices=("chrome", "msedge"),
+        default=None,
+        help="Use a locally installed browser channel instead of Playwright-managed Chromium.",
+    )
+    parser.add_argument(
+        "--browser-executable-path",
+        default=None,
+        help="Explicit browser executable path for Playwright launch.",
+    )
+    parser.add_argument(
+        "--business-context",
+        default=None,
+        help="Short product or business description to guide the analyst prompts.",
+    )
+    parser.add_argument(
+        "--business-context-file",
+        default=None,
+        help="Path to a text or markdown file with business context for the target site.",
+    )
+    return parser
+
+
+def _load_business_context(args: argparse.Namespace) -> str | None:
+    values: list[str] = []
+    if args.business_context:
+        values.append(args.business_context.strip())
+    if args.business_context_file:
+        values.append(Path(args.business_context_file).read_text(encoding="utf-8").strip())
+    joined = "\n\n".join(value for value in values if value)
+    return joined or None
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    config = RunConfig(
+        start_url=args.url,
+        output_dir=Path(args.output_dir),
+        depth_limit=args.depth_limit,
+        provider=args.provider,
+        model=args.model,
+        skip_analysis=args.skip_analysis,
+        headless=not args.show_browser,
+        capture_overlay=not args.no_overlay,
+        max_pages=args.max_pages,
+        business_context=_load_business_context(args),
+        browser_channel=args.browser_channel,
+        browser_executable_path=args.browser_executable_path,
+    )
+    try:
+        result = run_pipeline(config)
+    except KeyboardInterrupt:
+        print("Interrupted.")
+        raise SystemExit(130)
+
+    print(f"Report: {result.report_path}")
+    print(f"Sitemap JSON: {result.site_map_path}")
+    print(f"Analysis JSON: {result.analysis_path}")
+    if result.errors:
+        print("Errors:")
+        for error in result.errors:
+            print(f"- {error}")
