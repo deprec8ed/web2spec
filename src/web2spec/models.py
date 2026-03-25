@@ -98,4 +98,4 @@ class PipelineResult:
     report_path: Path
     site_map_path: Path
     analysis_path: Path
-
+    dashboard_path: Path

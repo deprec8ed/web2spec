@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-analysis", action="store_true", help="Skip the LLM analysis phase.")
     parser.add_argument("--no-overlay", action="store_true", help="Skip annotated screenshot generation.")
     parser.add_argument("--show-browser", action="store_true", help="Run Chromium in headed mode.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress crawl progress logs.")
     parser.add_argument(
         "--browser-channel",
         choices=("chrome", "msedge"),
@@ -74,6 +75,7 @@ def main() -> None:
         business_context=_load_business_context(args),
         browser_channel=args.browser_channel,
         browser_executable_path=args.browser_executable_path,
+        show_progress=not args.quiet,
     )
     try:
         result = run_pipeline(config)
@@ -82,6 +84,7 @@ def main() -> None:
         raise SystemExit(130)
 
     print(f"Report: {result.report_path}")
+    print(f"Dashboard: {result.dashboard_path}")
     print(f"Sitemap JSON: {result.site_map_path}")
     print(f"Analysis JSON: {result.analysis_path}")
     if result.errors:

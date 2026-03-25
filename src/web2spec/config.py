@@ -21,6 +21,7 @@ class RunConfig:
     business_context: str | None = None
     browser_channel: str | None = None
     browser_executable_path: str | None = None
+    show_progress: bool = True
 
     def resolved_model(self) -> str:
         if self.model:

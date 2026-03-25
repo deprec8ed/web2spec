@@ -8,8 +8,8 @@ from .cartographer import Cartographer
 from .config import RunConfig
 from .distiller import Distiller
 from .models import PageAnalysis, PageSnapshot, PipelineResult, QueueItem
-from .report import build_report, write_analysis, write_site_map
-from .utils import ensure_dir
+from .report import build_report, write_analysis, write_dashboard, write_site_map
+from .utils import canonicalize_url, ensure_dir
 
 
 class PipelineState(TypedDict):
@@ -33,6 +33,7 @@ class Web2SpecPipeline:
 
         distiller = Distiller(self.config)
         analyst = None if self.config.skip_analysis else Analyst(self.config)
+        start_url = canonicalize_url(self.config.start_url)
 
         async with Cartographer(self.config) as cartographer:
             async def process_page(state: PipelineState) -> PipelineState:
@@ -56,14 +57,22 @@ class Web2SpecPipeline:
                     }
 
                 visited.add(current.url)
+                self._log(
+                    f"[crawl] depth={current.depth} pending={len(pending)} visited={len(visited)} url={current.url}"
+                )
 
                 try:
                     snapshot = await cartographer.capture_page(current)
                     snapshot = distiller.distill(snapshot)
                     pages.append(snapshot)
+                    self._log(
+                        f"[distill] title={snapshot.title!r} links={len(snapshot.internal_links)} template={snapshot.template_key}"
+                    )
 
                     if analyst is not None:
+                        self._log(f"[analyze] url={snapshot.url} model={self.config.resolved_model()}")
                         analyses[snapshot.url] = await analyst.analyze(snapshot)
+                        self._log(f"[done] analyzed url={snapshot.url}")
 
                     if current.depth < self.config.depth_limit:
                         queued_urls = {item.url for item in pending}
@@ -80,7 +89,9 @@ class Web2SpecPipeline:
                                 )
                             )
                             queued_urls.add(link)
+                            self._log(f"[queue] depth={current.depth + 1} url={link}")
                 except Exception as exc:
+                    self._log(f"[error] url={current.url} error={exc}")
                     errors.append(f"{current.url}: {exc}")
 
                 return {
@@ -102,7 +113,7 @@ class Web2SpecPipeline:
 
             final_state = await app.ainvoke(
                 {
-                    "pending": [QueueItem(url=self.config.start_url, depth=0)],
+                    "pending": [QueueItem(url=start_url, depth=0)],
                     "visited": [],
                     "pages": [],
                     "analyses": {},
@@ -117,13 +128,15 @@ class Web2SpecPipeline:
         report_path = self.config.output_dir / "report.md"
         site_map_path = self.config.output_dir / "site_map.json"
         analysis_path = self.config.output_dir / "analysis.json"
+        dashboard_path = self.config.output_dir / "dashboard.html"
 
         report_path.write_text(
-            build_report(self.config.start_url, pages, analyses, errors),
+            build_report(start_url, pages, analyses, errors),
             encoding="utf-8",
         )
         write_site_map(site_map_path, pages, errors)
         write_analysis(analysis_path, analyses)
+        write_dashboard(dashboard_path, start_url, pages, analyses, errors)
 
         return PipelineResult(
             pages=pages,
@@ -132,7 +145,12 @@ class Web2SpecPipeline:
             report_path=report_path,
             site_map_path=site_map_path,
             analysis_path=analysis_path,
+            dashboard_path=dashboard_path,
         )
+
+    def _log(self, message: str) -> None:
+        if self.config.show_progress:
+            print(message, flush=True)
 
 
 def run_pipeline(config: RunConfig) -> PipelineResult:

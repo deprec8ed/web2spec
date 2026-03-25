@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urldefrag, urlsplit
 
 from .config import RunConfig
 from .models import BoundingBox, PageSnapshot, QueueItem, SemanticElement
-from .utils import ensure_dir, normalize_whitespace, safe_filename_from_url, slugify
+from .utils import canonicalize_url, ensure_dir, normalize_whitespace, safe_filename_from_url, slugify
 
 EXTRACTION_SCRIPT = """
 () => {
@@ -51,6 +51,7 @@ EXTRACTION_SCRIPT = """
 
 
 def extract_internal_links(base_url: str, hrefs: list[str]) -> list[str]:
+    base_url = canonicalize_url(base_url)
     base = urlsplit(base_url)
     internal: list[str] = []
     seen: set[str] = set()
@@ -60,12 +61,12 @@ def extract_internal_links(base_url: str, hrefs: list[str]) -> list[str]:
             continue
         absolute = urljoin(base_url, href)
         absolute, _ = urldefrag(absolute)
-        parsed = urlsplit(absolute)
+        parsed = urlsplit(canonicalize_url(absolute))
         if parsed.scheme not in {"http", "https"}:
             continue
         if parsed.netloc != base.netloc:
             continue
-        normalized = parsed._replace(query=parsed.query, fragment="").geturl()
+        normalized = parsed.geturl()
         if normalized not in seen:
             seen.add(normalized)
             internal.append(normalized)
@@ -125,20 +126,21 @@ class Cartographer:
 
         page = await self._context.new_page()
         try:
-            await page.goto(item.url, wait_until="networkidle", timeout=self.config.request_timeout_ms)
+            await self._navigate(page, item.url)
+            current_url = canonicalize_url(page.url or item.url)
             extracted = await page.evaluate(EXTRACTION_SCRIPT)
-            title = normalize_whitespace(extracted.get("title")) or item.url
+            title = normalize_whitespace(extracted.get("title")) or current_url
             headings = [normalize_whitespace(value) for value in extracted.get("headings", []) if normalize_whitespace(value)]
             elements = [self._deserialize_element(payload) for payload in extracted.get("elements", [])]
-            internal_links = extract_internal_links(item.url, [element.href or "" for element in elements])
-            template_key = build_template_key(item.url, elements, headings)
+            internal_links = extract_internal_links(current_url, [element.href or "" for element in elements])
+            template_key = build_template_key(current_url, elements, headings)
 
-            screenshot_name = f"{item.depth:02d}-{safe_filename_from_url(item.url)}.png"
+            screenshot_name = f"{item.depth:02d}-{safe_filename_from_url(current_url)}.png"
             screenshot_path = self.screenshots_dir / screenshot_name
             await page.screenshot(path=str(screenshot_path), full_page=True)
 
             return PageSnapshot(
-                url=item.url,
+                url=current_url,
                 depth=item.depth,
                 title=title,
                 headings=headings,
@@ -149,7 +151,8 @@ class Cartographer:
                 screenshot_path=screenshot_path,
             )
         finally:
-            await page.close()
+            with suppress(Exception):
+                await page.close()
 
     @staticmethod
     def _deserialize_element(payload: dict) -> SemanticElement:
@@ -195,6 +198,23 @@ class Cartographer:
             launch_kwargs["channel"] = "chrome"
             return launch_kwargs
         return launch_kwargs
+
+    async def _navigate(self, page, url: str) -> None:
+        last_error: Exception | None = None
+        for wait_until in ("domcontentloaded", "load"):
+            try:
+                await page.goto(url, wait_until=wait_until, timeout=self.config.request_timeout_ms)
+                with suppress(Exception):
+                    await page.wait_for_load_state("networkidle", timeout=min(self.config.request_timeout_ms, 5_000))
+                return
+            except Exception as exc:
+                last_error = exc
+                with suppress(Exception):
+                    await page.wait_for_timeout(750)
+
+        if last_error is None:
+            raise RuntimeError(f"Navigation failed for {url}")
+        raise last_error
 
 
 def page_snapshot_json(snapshot: PageSnapshot) -> str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 
 def normalize_whitespace(value: str | None) -> str:
@@ -19,7 +19,8 @@ def slugify(value: str) -> str:
 def safe_filename_from_url(url: str) -> str:
     parts = urlsplit(url)
     host = slugify(parts.netloc)
-    path = slugify(parts.path or "home")
+    raw_path = parts.path if parts.path and parts.path != "/" else "home"
+    path = slugify(raw_path)
     if parts.query:
         query = slugify(parts.query)[:40]
         return f"{host}-{path}-{query}"
@@ -31,6 +32,30 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def canonicalize_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower() or "https"
+    netloc = parts.netloc.lower()
+
+    if netloc.endswith(":80") and scheme == "http":
+        netloc = netloc[:-3]
+    if netloc.endswith(":443") and scheme == "https":
+        netloc = netloc[:-4]
+
+    path = parts.path or "/"
+    if path != "/":
+        path = path.rstrip("/") or "/"
+
+    normalized = SplitResult(
+        scheme=scheme,
+        netloc=netloc,
+        path=path,
+        query=parts.query,
+        fragment="",
+    )
+    return urlunsplit(normalized)
+
+
 def image_to_data_uri(path: Path) -> str:
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
@@ -38,4 +63,3 @@ def image_to_data_uri(path: Path) -> str:
 
 def image_to_base64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode("ascii")
-

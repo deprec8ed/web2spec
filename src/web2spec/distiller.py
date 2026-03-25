@@ -5,7 +5,11 @@ from pathlib import Path
 
 from .config import RunConfig
 from .models import PageSnapshot, SemanticElement
-from .utils import ensure_dir, safe_filename_from_url
+from .utils import ensure_dir, normalize_whitespace, safe_filename_from_url
+
+MAX_LABEL_LENGTH = 80
+MAX_LINKS_PER_PAGE = 60
+MAX_INTERNAL_LINKS = 40
 
 
 class Distiller:
@@ -28,8 +32,9 @@ class Distiller:
         return snapshot
 
     def _render_markdown(self, snapshot: PageSnapshot) -> str:
+        selected_elements = self._select_elements(snapshot.elements)
         grouped: dict[str, list[SemanticElement]] = defaultdict(list)
-        for element in snapshot.elements:
+        for element in selected_elements:
             grouped[element.tag].append(element)
 
         lines = [
@@ -59,17 +64,25 @@ class Distiller:
             lines.extend([f"## {section_name}", ""])
             for element in elements:
                 lines.append(self._render_element_line(element))
+            if tag == "a":
+                total_links = self._count_renderable_links(snapshot.elements)
+                if total_links > len(elements):
+                    lines.append(f"- [Link inventory truncated: showing {len(elements)} of {total_links}]")
             lines.append("")
 
         if snapshot.internal_links:
             lines.extend(["## Internal Links", ""])
-            lines.extend(f"- {link}" for link in snapshot.internal_links)
+            lines.extend(f"- {link}" for link in snapshot.internal_links[:MAX_INTERNAL_LINKS])
+            if len(snapshot.internal_links) > MAX_INTERNAL_LINKS:
+                lines.append(
+                    f"- [Internal link inventory truncated: showing {MAX_INTERNAL_LINKS} of {len(snapshot.internal_links)}]"
+                )
             lines.append("")
 
         return "\n".join(lines).strip() + "\n"
 
     def _render_element_line(self, element: SemanticElement) -> str:
-        label = element.label()
+        label = self._display_label(element)
         metadata: list[str] = []
         if element.href:
             metadata.append(f"href={element.href}")
@@ -83,10 +96,66 @@ class Distiller:
             metadata.append(f"id={element.element_id!r}")
         if element.input_type:
             metadata.append(f"type={element.input_type!r}")
-        if element.section_text:
+        if element.tag in {"button", "input", "form"} and element.section_text:
             metadata.append(f"context={element.section_text[:120]!r}")
+        elif element.tag == "nav":
+            nav_item_count = len(element.text.split())
+            metadata.append(f"items~{nav_item_count}")
         suffix = f" ({', '.join(metadata)})" if metadata else ""
         return f"- [{element.tag.capitalize()}: {label!r}]{suffix}"
+
+    def _select_elements(self, elements: list[SemanticElement]) -> list[SemanticElement]:
+        deduped: list[SemanticElement] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        for element in elements:
+            label = normalize_whitespace(element.label())
+            href = element.href or ""
+            key = (element.tag, href, label.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(element)
+
+        selected: list[SemanticElement] = []
+        link_count = 0
+        for element in deduped:
+            if self._is_noise(element):
+                continue
+            if element.tag == "a":
+                if link_count >= MAX_LINKS_PER_PAGE:
+                    continue
+                link_count += 1
+            selected.append(element)
+        return selected
+
+    def _is_noise(self, element: SemanticElement) -> bool:
+        label = normalize_whitespace(element.label())
+        if not label and not element.href and element.tag not in {"nav", "form"}:
+            return True
+        if element.tag == "nav" and (len(label) > 100 or len(label.split()) > 14):
+            return False
+        if element.tag == "a" and not label and not (element.aria_label or "").strip():
+            return True
+        return False
+
+    def _display_label(self, element: SemanticElement) -> str:
+        label = normalize_whitespace(element.label())
+        if element.tag == "nav" and (len(label) > 100 or len(label.split()) > 14):
+            return "Navigation menu"
+        if len(label) > MAX_LABEL_LENGTH:
+            return f"{label[: MAX_LABEL_LENGTH - 1].rstrip()}…"
+        return label
+
+    def _count_renderable_links(self, elements: list[SemanticElement]) -> int:
+        deduped_link_keys: set[tuple[str, str, str]] = set()
+        for element in elements:
+            if element.tag != "a" or self._is_noise(element):
+                continue
+            label = normalize_whitespace(element.label())
+            key = (element.tag, element.href or "", label.lower())
+            deduped_link_keys.add(key)
+        return len(deduped_link_keys)
 
     def _create_overlay(self, snapshot: PageSnapshot) -> Path | None:
         if snapshot.screenshot_path is None:
