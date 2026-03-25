@@ -539,9 +539,11 @@ def _build_dashboard_html(payload_json: str) -> str:
             <div class="intent-card">
               <div><strong>${{escapeHtml(item.cta || "Unknown CTA")}}</strong></div>
               <p>${{escapeHtml(item.why || "No rationale returned.")}}</p>
-              ${
-                "${item.evidence?.length ? `<ul class=\"intent-list\">${item.evidence.map((evidence) => `<li>${escapeHtml(evidence)}</li>`).join(\"\")}</ul>` : ''}"
-              }
+              ${{
+                item.evidence?.length
+                  ? `<ul class="intent-list">${{item.evidence.map((evidence) => `<li>${{escapeHtml(evidence)}}</li>`).join("")}}</ul>`
+                  : ""
+              }}
             </div>
           `).join("")
         : '<div class="empty">No intent analysis generated.</div>';
