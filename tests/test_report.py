@@ -38,7 +38,7 @@ def test_write_dashboard_renders_expected_sections(tmp_path: Path) -> None:
     write_dashboard(dashboard_path, "https://example.com", [page], {page.url: analysis}, [])
     dashboard = dashboard_path.read_text(encoding="utf-8")
 
-    assert "Web2Spec Dashboard" in dashboard
+    assert "Pulpit Web2Spec" in dashboard
     assert "Get Started" in dashboard
     assert "screenshots/page.png" in dashboard
     assert "Primary hero CTA" in dashboard

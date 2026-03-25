@@ -31,8 +31,8 @@ def test_distiller_renders_clean_markdown(tmp_path: Path) -> None:
     distilled = distiller.distill(snapshot)
 
     assert "# Example Home" in distilled.markdown
-    assert "## Buttons" in distilled.markdown
-    assert "[Button: 'Get Started']" in distilled.markdown
+    assert "## Przyciski" in distilled.markdown
+    assert "[Przycisk: 'Get Started']" in distilled.markdown
     assert "https://example.com/pricing" in distilled.markdown
 
 
@@ -61,6 +61,6 @@ def test_distiller_compresses_large_nav_blocks_and_dedupes_links(tmp_path: Path)
 
     distilled = distiller.distill(snapshot)
 
-    assert "Navigation menu" in distilled.markdown
+    assert "Menu nawigacyjne" in distilled.markdown
     assert distilled.markdown.count("https://example.com/docs") >= 1
-    assert distilled.markdown.count("[A: 'Docs']") == 1
+    assert distilled.markdown.count("[Odnośnik: 'Docs']") == 1

@@ -58,7 +58,7 @@ class Web2SpecPipeline:
 
                 visited.add(current.url)
                 self._log(
-                    f"[crawl] depth={current.depth} pending={len(pending)} visited={len(visited)} url={current.url}"
+                    f"[crawl] głębokość={current.depth} oczekujące={len(pending)} odwiedzone={len(visited)} url={current.url}"
                 )
 
                 try:
@@ -66,13 +66,13 @@ class Web2SpecPipeline:
                     snapshot = distiller.distill(snapshot)
                     pages.append(snapshot)
                     self._log(
-                        f"[distill] title={snapshot.title!r} links={len(snapshot.internal_links)} template={snapshot.template_key}"
+                        f"[distill] tytuł={snapshot.title!r} linki={len(snapshot.internal_links)} szablon={snapshot.template_key}"
                     )
 
                     if analyst is not None:
                         self._log(f"[analyze] url={snapshot.url} model={self.config.resolved_model()}")
                         analyses[snapshot.url] = await analyst.analyze(snapshot)
-                        self._log(f"[done] analyzed url={snapshot.url}")
+                        self._log(f"[done] przeanalizowano url={snapshot.url}")
 
                     if current.depth < self.config.depth_limit:
                         queued_urls = {item.url for item in pending}
@@ -89,9 +89,9 @@ class Web2SpecPipeline:
                                 )
                             )
                             queued_urls.add(link)
-                            self._log(f"[queue] depth={current.depth + 1} url={link}")
+                            self._log(f"[queue] głębokość={current.depth + 1} url={link}")
                 except Exception as exc:
-                    self._log(f"[error] url={current.url} error={exc}")
+                    self._log(f"[error] url={current.url} błąd={exc}")
                     errors.append(f"{current.url}: {exc}")
 
                 return {

@@ -11,33 +11,34 @@ from .models import CTAIntent, PageAnalysis, PageSnapshot
 from .utils import image_to_base64, image_to_data_uri
 
 
-SYSTEM_PROMPT = """You analyze website pages for product and delivery teams.
+SYSTEM_PROMPT = """Analizujesz strony internetowe dla zespołów produktowych i delivery.
 
-You will receive:
-1. A cleaned markdown description of a page
-2. A screenshot of the same page
+Otrzymasz:
+1. Oczyszczony opis strony w formacie markdown
+2. Zrzut ekranu tej samej strony
 
-Return JSON only with this shape:
+Zwróć wyłącznie JSON w takim kształcie:
 {
-  "functional_documentation": "short paragraph",
-  "user_stories": [
-    "As a [User Type], I want to [Action], so that [Value]."
+  "dokumentacja_funkcjonalna": "krótki akapit",
+  "historie_uzytkownika": [
+    "Jako [Typ Użytkownika] chcę [Działanie], aby [Wartość]."
   ],
-  "intent_map": [
+  "mapa_intencji": [
     {
-      "cta": "label of button or primary link",
-      "why": "the user motivation or problem this action solves",
-      "evidence": ["specific supporting detail from markdown or screenshot"]
+      "cta": "etykieta przycisku lub głównego linku",
+      "dlaczego": "motywacja użytkownika lub problem, który ta akcja rozwiązuje",
+      "dowody": ["konkretny szczegół z markdown lub zrzutu ekranu"]
     }
   ]
 }
 
-Rules:
-- Do not invent features that are not visible in the markdown or screenshot.
-- If evidence is weak, say so explicitly in the wording.
-- Prefer 2 to 5 user stories.
-- Focus the intent map on primary CTAs, not every minor footer link.
-- Use any provided business context as guidance, but never let it override the actual page evidence.
+Zasady:
+- Nie wymyślaj funkcji, których nie widać w markdown ani na zrzucie ekranu.
+- Jeśli dowody są słabe, zaznacz to wprost w treści odpowiedzi.
+- Preferuj od 2 do 5 historii użytkownika.
+- Skup mapę intencji na głównych CTA, a nie na drobnych linkach w stopce.
+- Wykorzystuj podany kontekst biznesowy jako wskazówkę, ale nie pozwól, aby był ważniejszy niż faktyczne dowody ze strony.
+- Wszystkie treści opisowe zwracaj po polsku.
 """
 
 
@@ -48,7 +49,7 @@ class Analyst:
 
     async def analyze(self, snapshot: PageSnapshot) -> PageAnalysis:
         if snapshot.screenshot_path is None:
-            raise RuntimeError("Screenshot is required for multimodal analysis.")
+            raise RuntimeError("Do analizy multimodalnej wymagany jest zrzut ekranu.")
 
         prompt = self._build_prompt(snapshot)
         raw = await self._request(prompt, snapshot.screenshot_path)
@@ -56,29 +57,33 @@ class Analyst:
 
         return PageAnalysis(
             url=snapshot.url,
-            functional_documentation=parsed.get("functional_documentation", "").strip(),
-            user_stories=[story.strip() for story in parsed.get("user_stories", []) if story.strip()],
+            functional_documentation=_get_str(parsed, "dokumentacja_funkcjonalna", "functional_documentation"),
+            user_stories=[
+                story.strip()
+                for story in _get_list(parsed, "historie_uzytkownika", "user_stories")
+                if story.strip()
+            ],
             intent_map=[
                 CTAIntent(
-                    cta=item.get("cta", "").strip(),
-                    why=item.get("why", "").strip(),
-                    evidence=[value.strip() for value in item.get("evidence", []) if value.strip()],
+                    cta=_get_str(item, "cta"),
+                    why=_get_str(item, "dlaczego", "why"),
+                    evidence=[value.strip() for value in _get_list(item, "dowody", "evidence") if value.strip()],
                 )
-                for item in parsed.get("intent_map", [])
-                if item.get("cta") or item.get("why")
+                for item in _get_list(parsed, "mapa_intencji", "intent_map")
+                if item.get("cta") or item.get("dlaczego") or item.get("why")
             ],
             raw_response=parsed,
         )
 
     def _build_prompt(self, snapshot: PageSnapshot) -> str:
-        business_context = self.config.business_context or "No business context provided."
-        return f"""Analyze this page.
+        business_context = self.config.business_context or "Nie podano kontekstu biznesowego."
+        return f"""Przeanalizuj tę stronę.
 
 URL: {snapshot.url}
-Title: {snapshot.title}
-Template: {snapshot.template_key}
+Tytuł: {snapshot.title}
+Szablon: {snapshot.template_key}
 
-Business Context:
+Kontekst biznesowy:
 {business_context}
 
 Markdown:
@@ -96,7 +101,7 @@ Markdown:
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:
-            raise RuntimeError("OpenAI SDK is not installed.") from exc
+            raise RuntimeError("Pakiet OpenAI SDK nie jest zainstalowany.") from exc
 
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         response = await client.chat.completions.create(
@@ -120,23 +125,23 @@ Markdown:
             api_key = os.environ.get("AZURE_API_KEY")
             base_url = os.environ.get("AZURE_BASE_URL")
             if not api_key or not base_url:
-                raise RuntimeError("AZURE_API_KEY and AZURE_BASE_URL are required for Azure OpenAI analysis.")
+                raise RuntimeError("Do analizy przez Azure OpenAI wymagane są zmienne AZURE_API_KEY oraz AZURE_BASE_URL.")
             return api_key, base_url.rstrip("/")
 
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY is required for OpenAI analysis.")
+            raise RuntimeError("Do analizy przez OpenAI wymagana jest zmienna OPENAI_API_KEY.")
         return api_key, None
 
     async def _request_anthropic(self, prompt: str, screenshot_path) -> str:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for Anthropic analysis.")
+            raise RuntimeError("Do analizy przez Anthropic wymagana jest zmienna ANTHROPIC_API_KEY.")
 
         try:
             from anthropic import AsyncAnthropic
         except ImportError as exc:
-            raise RuntimeError("Anthropic SDK is not installed.") from exc
+            raise RuntimeError("Pakiet Anthropic SDK nie jest zainstalowany.") from exc
 
         client = AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
@@ -177,5 +182,21 @@ def _extract_json(payload: str) -> dict[str, Any]:
 
     match = re.search(r"\{.*\}", payload, re.DOTALL)
     if not match:
-        raise ValueError(f"LLM response did not contain JSON: {payload[:200]}")
+        raise ValueError(f"Odpowiedź modelu nie zawierała JSON-a: {payload[:200]}")
     return json.loads(match.group(0))
+
+
+def _get_str(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str):
+            return value.strip()
+    return ""
+
+
+def _get_list(payload: dict[str, Any], *keys: str) -> list[Any]:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []

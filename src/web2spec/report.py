@@ -8,15 +8,15 @@ from .models import PageAnalysis, PageSnapshot
 
 def write_site_map(path: Path, pages: list[PageSnapshot], errors: list[str]) -> None:
     payload = {
-        "pages": [page.to_dict() for page in pages],
-        "errors": errors,
+        "strony": [_serialize_page_snapshot(page) for page in pages],
+        "błędy": errors,
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def write_analysis(path: Path, analyses: dict[str, PageAnalysis]) -> None:
-    payload = {url: analysis.to_dict() for url, analysis in analyses.items()}
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    payload = {url: _serialize_analysis(analysis) for url, analysis in analyses.items()}
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def write_dashboard(
@@ -66,13 +66,13 @@ def build_report(
     errors: list[str],
 ) -> str:
     lines = [
-        "# Web2Spec Report",
+        "# Raport Web2Spec",
         "",
-        f"- Root URL: {root_url}",
-        f"- Pages crawled: {len(pages)}",
-        f"- Analyses generated: {len(analyses)}",
+        f"- URL główny: {root_url}",
+        f"- Liczba przeskanowanych stron: {len(pages)}",
+        f"- Liczba wygenerowanych analiz: {len(analyses)}",
         "",
-        "## Sitemap",
+        "## Mapa strony",
         "",
     ]
 
@@ -81,7 +81,7 @@ def build_report(
         lines.append(f"{indent}- {page.title} ({page.url})")
 
     if errors:
-        lines.extend(["", "## Crawl Errors", ""])
+        lines.extend(["", "## Błędy crawlowania", ""])
         lines.extend(f"- {error}" for error in errors)
 
     for page in sorted(pages, key=lambda item: (item.depth, item.url)):
@@ -92,12 +92,12 @@ def build_report(
                 f"## {page.title}",
                 "",
                 f"- URL: {page.url}",
-                f"- Template: {page.template_key}",
-                f"- Depth: {page.depth}",
-                f"- Screenshot: {page.screenshot_path}",
-                f"- Overlay: {page.overlay_path}",
+                f"- Szablon: {page.template_key}",
+                f"- Głębokość: {page.depth}",
+                f"- Zrzut ekranu: {page.screenshot_path}",
+                f"- Nakładka: {page.overlay_path}",
                 "",
-                "### Distilled Markdown",
+                "### Oczyszczony Markdown",
                 "",
                 "```markdown",
                 page.markdown.rstrip(),
@@ -107,16 +107,16 @@ def build_report(
         )
 
         if analysis is None:
-            lines.extend(["### Analysis", "", "_Skipped or unavailable._", ""])
+            lines.extend(["### Analiza", "", "_Pominięto lub niedostępne._", ""])
             continue
 
         lines.extend(
             [
-                "### Functional Documentation",
+                "### Dokumentacja funkcjonalna",
                 "",
-                analysis.functional_documentation or "_No summary returned._",
+                analysis.functional_documentation or "_Model nie zwrócił podsumowania._",
                 "",
-                "### User Stories",
+                "### Historie użytkownika",
                 "",
             ]
         )
@@ -124,17 +124,17 @@ def build_report(
         if analysis.user_stories:
             lines.extend(f"- {story}" for story in analysis.user_stories)
         else:
-            lines.append("- _No user stories returned._")
+            lines.append("- _Model nie zwrócił historii użytkownika._")
 
-        lines.extend(["", "### Intent Map", ""])
+        lines.extend(["", "### Mapa intencji", ""])
         if analysis.intent_map:
             for intent in analysis.intent_map:
-                lines.append(f"- CTA: {intent.cta or 'Unknown CTA'}")
-                lines.append(f"  Why: {intent.why or 'No rationale returned.'}")
+                lines.append(f"- CTA: {intent.cta or 'Nieznane CTA'}")
+                lines.append(f"  Dlaczego: {intent.why or 'Model nie zwrócił uzasadnienia.'}")
                 if intent.evidence:
-                    lines.append(f"  Evidence: {'; '.join(intent.evidence)}")
+                    lines.append(f"  Dowody: {'; '.join(intent.evidence)}")
         else:
-            lines.append("- _No CTA analysis returned._")
+            lines.append("- _Model nie zwrócił analizy CTA._")
 
     return "\n".join(lines).strip() + "\n"
 
@@ -145,13 +145,69 @@ def _relative_path(base_dir: Path, value: Path | None) -> str | None:
     return str(value.relative_to(base_dir))
 
 
+def _serialize_page_snapshot(page: PageSnapshot) -> dict:
+    return {
+        "url": page.url,
+        "głębokość": page.depth,
+        "tytuł": page.title,
+        "nagłówki": page.headings,
+        "elementy": [
+            {
+                "tag": element.tag,
+                "tekst": element.text,
+                "href": element.href,
+                "id_elementu": element.element_id,
+                "nazwa": element.name,
+                "aria_label": element.aria_label,
+                "placeholder": element.placeholder,
+                "typ_pola": element.input_type,
+                "rola": element.role,
+                "tekst_sekcji": element.section_text,
+                "bbox": None
+                if element.bbox is None
+                else {
+                    "x": element.bbox.x,
+                    "y": element.bbox.y,
+                    "szerokość": element.bbox.width,
+                    "wysokość": element.bbox.height,
+                },
+            }
+            for element in page.elements
+        ],
+        "linki_wewnętrzne": page.internal_links,
+        "klucz_szablonu": page.template_key,
+        "url_rodzica": page.parent_url,
+        "ścieżka_zrzutu": str(page.screenshot_path) if page.screenshot_path else None,
+        "ścieżka_nakładki": str(page.overlay_path) if page.overlay_path else None,
+        "markdown": page.markdown,
+        "reprezentant_szablonu": page.is_template_representative,
+    }
+
+
+def _serialize_analysis(analysis: PageAnalysis) -> dict:
+    return {
+        "url": analysis.url,
+        "dokumentacja_funkcjonalna": analysis.functional_documentation,
+        "historie_użytkownika": analysis.user_stories,
+        "mapa_intencji": [
+            {
+                "cta": intent.cta,
+                "dlaczego": intent.why,
+                "dowody": intent.evidence,
+            }
+            for intent in analysis.intent_map
+        ],
+        "surowa_odpowiedź": analysis.raw_response,
+    }
+
+
 def _build_dashboard_html(payload_json: str) -> str:
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Web2Spec Dashboard</title>
+  <title>Pulpit Web2Spec</title>
   <style>
     :root {{
       --bg: #f5efe4;
@@ -448,8 +504,8 @@ def _build_dashboard_html(payload_json: str) -> str:
     <main class="main">
       <div class="hero">
         <div>
-          <div class="meta">Generated crawl dashboard</div>
-          <h2 id="page-title">No pages</h2>
+          <div class="meta">Wygenerowany pulpit przeglądu crawlów</div>
+          <h2 id="page-title">Brak stron</h2>
         </div>
         <div class="meta" id="page-meta"></div>
       </div>
@@ -475,10 +531,10 @@ def _build_dashboard_html(payload_json: str) -> str:
     rootUrl.textContent = payload.root_url;
 
     const statItems = [
-      ["Pages", payload.summary.pages_crawled],
-      ["Analyses", payload.summary.analyses_generated],
-      ["Errors", payload.summary.errors],
-      ["Templates", new Set(pages.map((page) => page.template_key)).size],
+      ["Strony", payload.summary.pages_crawled],
+      ["Analizy", payload.summary.analyses_generated],
+      ["Błędy", payload.summary.errors],
+      ["Szablony", new Set(pages.map((page) => page.template_key)).size],
     ];
     stats.innerHTML = statItems.map(([label, value]) => `
       <div class="stat">
@@ -490,7 +546,7 @@ def _build_dashboard_html(payload_json: str) -> str:
     if (payload.errors.length) {{
       errorPanel.innerHTML = `
         <div class="panel">
-          <h3>Crawl Errors</h3>
+          <h3>Błędy crawlowania</h3>
           <ul class="error-list">${{payload.errors.map((error) => `<li>${{escapeHtml(error)}}</li>`).join("")}}</ul>
         </div>
       `;
@@ -513,7 +569,7 @@ def _build_dashboard_html(payload_json: str) -> str:
     function render() {{
       const page = pages[currentIndex];
       if (!page) {{
-        content.innerHTML = '<div class="panel empty">No crawl data available.</div>';
+        content.innerHTML = '<div class="panel empty">Brak danych crawlowania.</div>';
         return;
       }}
 
@@ -523,9 +579,9 @@ def _build_dashboard_html(payload_json: str) -> str:
 
       pageTitle.textContent = page.title;
       pageMeta.innerHTML = `
-        <div>Depth ${{
+        <div>Głębokość ${{
           page.depth
-        }} · Template <code>${{escapeHtml(page.template_key)}}</code></div>
+        }} · Szablon <code>${{escapeHtml(page.template_key)}}</code></div>
         <div><a href="${{escapeAttr(page.url)}}" target="_blank" rel="noreferrer">${{escapeHtml(page.url)}}</a></div>
       `;
 
@@ -533,12 +589,12 @@ def _build_dashboard_html(payload_json: str) -> str:
       const analysis = page.analysis;
       const storyList = analysis?.user_stories?.length
         ? `<ul class="story-list">${{analysis.user_stories.map((story) => `<li>${{escapeHtml(story)}}</li>`).join("")}}</ul>`
-        : '<div class="empty">No user stories generated.</div>';
+        : '<div class="empty">Nie wygenerowano historii użytkownika.</div>';
       const intentList = analysis?.intent_map?.length
         ? analysis.intent_map.map((item) => `
             <div class="intent-card">
-              <div><strong>${{escapeHtml(item.cta || "Unknown CTA")}}</strong></div>
-              <p>${{escapeHtml(item.why || "No rationale returned.")}}</p>
+              <div><strong>${{escapeHtml(item.cta || "Nieznane CTA")}}</strong></div>
+              <p>${{escapeHtml(item.why || "Model nie zwrócił uzasadnienia.")}}</p>
               ${{
                 item.evidence?.length
                   ? `<ul class="intent-list">${{item.evidence.map((evidence) => `<li>${{escapeHtml(evidence)}}</li>`).join("")}}</ul>`
@@ -546,55 +602,55 @@ def _build_dashboard_html(payload_json: str) -> str:
               }}
             </div>
           `).join("")
-        : '<div class="empty">No intent analysis generated.</div>';
+        : '<div class="empty">Nie wygenerowano mapy intencji.</div>';
 
       content.innerHTML = `
         <section class="media">
           <div class="panel">
             <div class="image-toggle">
-              <button class="${{currentImage === "screenshot" ? "active" : ""}}" data-image="screenshot">Screenshot</button>
+              <button class="${{currentImage === "screenshot" ? "active" : ""}}" data-image="screenshot">Zrzut ekranu</button>
               <button class="${{currentImage === "overlay" ? "active" : ""}}" data-image="overlay" ${{
                 page.overlay_path ? "" : "disabled"
-              }}>Overlay</button>
+              }}>Nakładka</button>
             </div>
             <div class="image-wrap">
               ${{
                 imagePath
-                  ? `<img src="${{escapeAttr(imagePath)}}" alt="Captured page preview">`
-                  : '<div class="empty" style="padding: 18px;">No image available.</div>'
+                  ? `<img src="${{escapeAttr(imagePath)}}" alt="Podgląd przechwyconej strony">`
+                  : '<div class="empty" style="padding: 18px;">Brak obrazu.</div>'
               }}
             </div>
             <div class="chips">
               ${{
                 page.headings.slice(0, 10).map((heading) => `<span class="chip">${{escapeHtml(heading)}}</span>`).join("")
-                  || '<span class="chip">No headings captured</span>'
+                  || '<span class="chip">Nie przechwycono nagłówków</span>'
               }}
             </div>
           </div>
           <div class="panel">
-            <h3>Functional Documentation</h3>
-            <p>${{escapeHtml(analysis?.functional_documentation || "Analysis skipped or unavailable.")}}</p>
+            <h3>Dokumentacja funkcjonalna</h3>
+            <p>${{escapeHtml(analysis?.functional_documentation || "Analiza została pominięta lub jest niedostępna.")}}</p>
             <div class="chips">
-              <span class="chip">Internal links: ${{page.internal_links.length}}</span>
-              <span class="chip">Headings: ${{page.headings.length}}</span>
-              <span class="chip">Has analysis: ${{analysis ? "yes" : "no"}}</span>
+              <span class="chip">Linki wewnętrzne: ${{page.internal_links.length}}</span>
+              <span class="chip">Nagłówki: ${{page.headings.length}}</span>
+              <span class="chip">Jest analiza: ${{analysis ? "tak" : "nie"}}</span>
             </div>
           </div>
         </section>
 
         <section class="split">
           <div class="panel">
-            <h3>User Stories</h3>
+            <h3>Historie użytkownika</h3>
             ${{storyList}}
           </div>
           <div class="panel">
-            <h3>Intent Map</h3>
+            <h3>Mapa intencji</h3>
             ${{intentList}}
           </div>
         </section>
 
         <section class="panel">
-          <h3>Distilled Markdown</h3>
+          <h3>Oczyszczony Markdown</h3>
           <pre>${{escapeHtml(page.markdown)}}</pre>
         </section>
       `;

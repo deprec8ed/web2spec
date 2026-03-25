@@ -1,14 +1,20 @@
-# Business Context Template
+# Szablon Kontekstu Biznesowego
 
-Company summary:
-The company is a Polish Universal Bank that provides [product or service] for [target customers].
+Podsumowanie firmy:
+Firma dostarcza [produkt lub usługę] dla [grupy docelowej klientów].
 
-Primary users are personal account holders with debit/credit cards
+Główni użytkownicy:
+- [Typ użytkownika 1]
+- [Typ użytkownika 2]
 
-Main jobs to be done:
-- Help users [goal]
-- Reduce the pain of [problem]
+Najważniejsze zadania do wykonania:
+- Pomóc użytkownikom [cel]
+- Ograniczyć problem związany z [ból / trudność]
 
-Important constraints:
-- Do not assume features beyond what is shown on the page.
-- Prefer page evidence over this context if they conflict.
+Cele konwersji:
+- Zachęcić użytkowników do [główne CTA]
+- Pozyskiwać leady lub zamówienia przez [demo, rejestrację, formularz kontaktowy, checkout]
+
+Ważne ograniczenia:
+- Nie zakładaj istnienia funkcji, których nie widać na stronie.
+- Jeśli ten kontekst jest sprzeczny z treścią strony, ważniejsze są dowody ze strony.

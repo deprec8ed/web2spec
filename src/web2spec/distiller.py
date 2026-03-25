@@ -10,6 +10,20 @@ from .utils import ensure_dir, normalize_whitespace, safe_filename_from_url
 MAX_LABEL_LENGTH = 80
 MAX_LINKS_PER_PAGE = 60
 MAX_INTERNAL_LINKS = 40
+SECTION_TITLES = (
+    ("nav", "Nawigacja"),
+    ("a", "Odnośniki"),
+    ("button", "Przyciski"),
+    ("input", "Pola"),
+    ("form", "Formularze"),
+)
+TAG_LABELS = {
+    "nav": "Nawigacja",
+    "a": "Odnośnik",
+    "button": "Przycisk",
+    "input": "Pole",
+    "form": "Formularz",
+}
 
 
 class Distiller:
@@ -41,23 +55,17 @@ class Distiller:
             f"# {snapshot.title}",
             "",
             f"- URL: {snapshot.url}",
-            f"- Depth: {snapshot.depth}",
-            f"- Template: {snapshot.template_key}",
+            f"- Głębokość: {snapshot.depth}",
+            f"- Szablon: {snapshot.template_key}",
             "",
         ]
 
         if snapshot.headings:
-            lines.extend(["## Headings", ""])
+            lines.extend(["## Nagłówki", ""])
             lines.extend(f"- {heading}" for heading in snapshot.headings)
             lines.append("")
 
-        for tag, section_name in (
-            ("nav", "Navigation"),
-            ("a", "Links"),
-            ("button", "Buttons"),
-            ("input", "Inputs"),
-            ("form", "Forms"),
-        ):
+        for tag, section_name in SECTION_TITLES:
             elements = grouped.get(tag, [])
             if not elements:
                 continue
@@ -67,15 +75,15 @@ class Distiller:
             if tag == "a":
                 total_links = self._count_renderable_links(snapshot.elements)
                 if total_links > len(elements):
-                    lines.append(f"- [Link inventory truncated: showing {len(elements)} of {total_links}]")
+                    lines.append(f"- [Lista odnośników skrócona: pokazano {len(elements)} z {total_links}]")
             lines.append("")
 
         if snapshot.internal_links:
-            lines.extend(["## Internal Links", ""])
+            lines.extend(["## Linki wewnętrzne", ""])
             lines.extend(f"- {link}" for link in snapshot.internal_links[:MAX_INTERNAL_LINKS])
             if len(snapshot.internal_links) > MAX_INTERNAL_LINKS:
                 lines.append(
-                    f"- [Internal link inventory truncated: showing {MAX_INTERNAL_LINKS} of {len(snapshot.internal_links)}]"
+                    f"- [Lista linków wewnętrznych skrócona: pokazano {MAX_INTERNAL_LINKS} z {len(snapshot.internal_links)}]"
                 )
             lines.append("")
 
@@ -100,9 +108,10 @@ class Distiller:
             metadata.append(f"context={element.section_text[:120]!r}")
         elif element.tag == "nav":
             nav_item_count = len(element.text.split())
-            metadata.append(f"items~{nav_item_count}")
+            metadata.append(f"elementy~{nav_item_count}")
         suffix = f" ({', '.join(metadata)})" if metadata else ""
-        return f"- [{element.tag.capitalize()}: {label!r}]{suffix}"
+        tag_label = TAG_LABELS.get(element.tag, element.tag.capitalize())
+        return f"- [{tag_label}: {label!r}]{suffix}"
 
     def _select_elements(self, elements: list[SemanticElement]) -> list[SemanticElement]:
         deduped: list[SemanticElement] = []
@@ -142,7 +151,7 @@ class Distiller:
     def _display_label(self, element: SemanticElement) -> str:
         label = normalize_whitespace(element.label())
         if element.tag == "nav" and (len(label) > 100 or len(label.split()) > 14):
-            return "Navigation menu"
+            return "Menu nawigacyjne"
         if len(label) > MAX_LABEL_LENGTH:
             return f"{label[: MAX_LABEL_LENGTH - 1].rstrip()}…"
         return label

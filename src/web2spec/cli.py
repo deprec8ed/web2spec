@@ -8,42 +8,42 @@ from .pipeline import run_pipeline
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Crawl a website into structured documentation artifacts.")
-    parser.add_argument("url", help="Starting URL to crawl.")
-    parser.add_argument("--output-dir", default="outputs/run", help="Directory for generated artifacts.")
-    parser.add_argument("--depth-limit", type=int, default=2, help="Maximum crawl depth from the start URL.")
+    parser = argparse.ArgumentParser(description="Przeskanuj stronę i wygeneruj ustrukturyzowane artefakty dokumentacyjne.")
+    parser.add_argument("url", help="Początkowy adres URL do przeskanowania.")
+    parser.add_argument("--output-dir", default="outputs/run", help="Katalog dla wygenerowanych artefaktów.")
+    parser.add_argument("--depth-limit", type=int, default=2, help="Maksymalna głębokość przejścia od adresu startowego.")
     parser.add_argument(
         "--provider",
         choices=("azure-openai", "openai", "anthropic"),
         default="azure-openai",
-        help="Multimodal LLM provider.",
+        help="Dostawca modelu multimodalnego.",
     )
-    parser.add_argument("--model", default=None, help="Override the model name.")
-    parser.add_argument("--max-pages", type=int, default=20, help="Maximum pages to queue for the PoC.")
-    parser.add_argument("--skip-analysis", action="store_true", help="Skip the LLM analysis phase.")
-    parser.add_argument("--no-overlay", action="store_true", help="Skip annotated screenshot generation.")
-    parser.add_argument("--show-browser", action="store_true", help="Run Chromium in headed mode.")
-    parser.add_argument("--quiet", action="store_true", help="Suppress crawl progress logs.")
+    parser.add_argument("--model", default=None, help="Nadpisz nazwę modelu.")
+    parser.add_argument("--max-pages", type=int, default=20, help="Maksymalna liczba stron dodanych do kolejki w PoC.")
+    parser.add_argument("--skip-analysis", action="store_true", help="Pomiń fazę analizy przez LLM.")
+    parser.add_argument("--no-overlay", action="store_true", help="Pomiń generowanie zrzutów z naniesionymi obramowaniami.")
+    parser.add_argument("--show-browser", action="store_true", help="Uruchom przeglądarkę w trybie z interfejsem.")
+    parser.add_argument("--quiet", action="store_true", help="Ukryj logi postępu podczas crawlowania.")
     parser.add_argument(
         "--browser-channel",
         choices=("chrome", "msedge"),
         default=None,
-        help="Use a locally installed browser channel instead of Playwright-managed Chromium.",
+        help="Użyj lokalnie zainstalowanej przeglądarki zamiast Chromium zarządzanego przez Playwright.",
     )
     parser.add_argument(
         "--browser-executable-path",
         default=None,
-        help="Explicit browser executable path for Playwright launch.",
+        help="Jawna ścieżka do pliku wykonywalnego przeglądarki dla Playwright.",
     )
     parser.add_argument(
         "--business-context",
         default=None,
-        help="Short product or business description to guide the analyst prompts.",
+        help="Krótki opis produktu lub biznesu, który ma ukierunkować prompt analityczny.",
     )
     parser.add_argument(
         "--business-context-file",
         default=None,
-        help="Path to a text or markdown file with business context for the target site.",
+        help="Ścieżka do pliku tekstowego lub markdown z kontekstem biznesowym dla analizowanej strony.",
     )
     return parser
 
@@ -80,14 +80,14 @@ def main() -> None:
     try:
         result = run_pipeline(config)
     except KeyboardInterrupt:
-        print("Interrupted.")
+        print("Przerwano.")
         raise SystemExit(130)
 
-    print(f"Report: {result.report_path}")
-    print(f"Dashboard: {result.dashboard_path}")
-    print(f"Sitemap JSON: {result.site_map_path}")
-    print(f"Analysis JSON: {result.analysis_path}")
+    print(f"Raport: {result.report_path}")
+    print(f"Pulpit: {result.dashboard_path}")
+    print(f"Mapa strony JSON: {result.site_map_path}")
+    print(f"Analiza JSON: {result.analysis_path}")
     if result.errors:
-        print("Errors:")
+        print("Błędy:")
         for error in result.errors:
             print(f"- {error}")
