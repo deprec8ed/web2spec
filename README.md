@@ -2,6 +2,8 @@
 
 Web2Spec is a proof-of-concept pipeline that crawls a live website, extracts a machine-readable interaction map, distills each page into LLM-friendly markdown, and uses multimodal models to generate product-facing documentation.
 
+It was done with pure hatred towards *vibing*, but done with it nonetheless
+
 ## What the PoC does
 
 1. Uses Playwright to crawl a dynamic website in headless mode.
