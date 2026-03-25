@@ -2,8 +2,6 @@
 
 Web2Spec is a proof-of-concept pipeline that crawls a live website, extracts a machine-readable interaction map, distills each page into LLM-friendly markdown, and uses multimodal models to generate product-facing documentation.
 
-It was done with pure hatred towards *vibing*, but done with it nonetheless
-
 ## What the PoC does
 
 1. Uses Playwright to crawl a dynamic website in headless mode.
@@ -16,7 +14,7 @@ It was done with pure hatred towards *vibing*, but done with it nonetheless
    - Functional documentation
    - User stories
    - CTA intent analysis
-8. Compiles a final `report.md` and `site_map.json`.
+8. Compiles a final `report.md`, `dashboard.html`, `site_map.json`, and `analysis.json`.
 
 ## Installation
 
@@ -75,6 +73,7 @@ Useful flags:
 ```text
 outputs/example/
   analysis.json
+  dashboard.html
   report.md
   site_map.json
   markdown/
@@ -129,6 +128,7 @@ web2spec https://target-site.example \
 
 6. Review:
 
+- `outputs/target-site/dashboard.html`
 - `outputs/target-site/report.md`
 - `outputs/target-site/site_map.json`
 - `outputs/target-site/analysis.json`
@@ -141,3 +141,337 @@ If Playwright-managed Chromium is unavailable, keep `--browser-channel chrome`. 
 2. Run the crawler against the target site with a small depth limit first.
 3. Review `report.md` for hallucinations, missing flows, and CTA interpretation quality.
 4. Expand depth or refine the business context if the first pass is too generic.
+
+## Which Output Should You Treat As The Basis Document?
+
+Use the outputs differently depending on the job:
+
+- `site_map.json`: the structural source of truth. Use this when you want the raw crawl result, semantic elements, links, headings, and screenshots represented in machine-readable form.
+- `markdown/*.md`: the best pre-LLM page basis for documentation generation. This is the cleaned page representation that gets sent to the analyst prompt.
+- `analysis.json`: the best structured post-LLM documentation artifact. Use this if you want to consume the generated functional docs, user stories, and intent maps programmatically.
+- `report.md`: the best human-readable consolidated document for review.
+- `dashboard.html`: the best human-readable visual review surface.
+
+If the question is, "what single structured artifact should I build downstream documentation from?", the answer is usually:
+
+1. `analysis.json` if you want the generated documentation output.
+2. `site_map.json` if you want the raw crawl source of truth and plan to run your own downstream documentation generation.
+
+## Where To Change What Gets Analyzed
+
+There are three main places to edit depending on what you mean by "analyzed":
+
+- `src/web2spec/cartographer.py`
+  This controls what gets extracted from the live page.
+  Edit `EXTRACTION_SCRIPT` if you want to capture more DOM elements, different attributes, or extra page metadata.
+  Current focus is on `<a>`, `<button>`, `<input>`, `<form>`, and `<nav>`.
+
+- `src/web2spec/distiller.py`
+  This controls how the extracted structure is converted into the cleaned markdown that is sent to the LLM.
+  Edit this if you want to:
+  - keep more or fewer links
+  - include more context text
+  - change how navigation is summarized
+  - alter markdown headings and section layout
+
+- `src/web2spec/analyst.py`
+  This controls the LLM reasoning step.
+  Edit `SYSTEM_PROMPT` if you want to change what the model should infer, how strict it should be, or what output shape it should return.
+  Edit `_build_prompt()` if you want to send additional context into the model.
+
+## Where To Change How It Is Returned
+
+If you want to add another returned section, for example:
+
+- acceptance criteria
+- risks
+- developer notes
+- test suggestions
+- component inventory
+
+then update these places together:
+
+1. `src/web2spec/models.py`
+   Add the new field to `PageAnalysis` and, if needed, add a dedicated dataclass like `CTAIntent`.
+
+2. `src/web2spec/analyst.py`
+   Update `SYSTEM_PROMPT` so the LLM knows it must return the new field.
+   Update `analyze()` so the returned JSON is parsed into the new model field.
+
+3. `src/web2spec/report.py`
+   Update `build_report()` so the new field appears in `report.md`.
+   Update `write_dashboard()` if you also want it shown in `dashboard.html`.
+
+4. Optional: `tests/`
+   Add or update tests so the new shape is covered.
+
+That is the full path. In practice, the model schema, parser, and output renderers must stay aligned.
+
+## Duplicate Analysis Guardrail
+
+The pipeline already has a guardrail against analyzing the same page twice.
+
+It works in three parts:
+
+1. `src/web2spec/utils.py`
+   `canonicalize_url()` normalizes URLs before the crawl loop uses them.
+   This is what collapses cases like `https://docs.qmk.fm` and `https://docs.qmk.fm/`.
+
+2. `src/web2spec/pipeline.py`
+   The loop keeps a `visited` set. Once a canonical URL has been processed, it will not be processed again.
+
+3. `src/web2spec/pipeline.py`
+   Before adding newly found links to the queue, the loop also checks a `queued_urls` set so the same page is not scheduled multiple times before it is visited.
+
+Important caveat:
+
+- Different query strings are currently treated as different pages.
+- If a site exposes the same content under multiple genuinely different URLs, those may still be crawled separately unless you add stronger canonicalization rules.
+
+## Detailed Process
+
+This is the full pipeline, step by step.
+
+### 1. CLI Input Is Parsed
+
+File:
+
+- `src/web2spec/cli.py`
+
+What happens:
+
+- The user provides a start URL and optional flags like depth limit, provider, model, output directory, and business context.
+- The CLI builds a `RunConfig` object.
+- That config is passed into the main pipeline.
+
+Why it matters:
+
+- This is where you control runtime behavior without editing code.
+
+### 2. The Pipeline Initializes State
+
+File:
+
+- `src/web2spec/pipeline.py`
+
+What happens:
+
+- The start URL is canonicalized.
+- The output directory is created.
+- The pipeline initializes:
+  - a pending queue of URLs to crawl
+  - a visited set
+  - a page collection
+  - an analysis collection
+  - an error list
+
+Why it matters:
+
+- This is the orchestration layer.
+- It controls the crawl loop, dedupe behavior, and artifact generation.
+
+### 3. Playwright Launches A Browser Context
+
+File:
+
+- `src/web2spec/cartographer.py`
+
+What happens:
+
+- Playwright starts.
+- A Chromium-compatible browser is launched.
+- The project prefers a local installed Chromium or Chrome if available.
+- A browser context is created with the configured viewport.
+
+Why it matters:
+
+- This is what lets the tool handle dynamic SPAs instead of just downloading HTML.
+
+### 4. A Page Is Navigated To
+
+File:
+
+- `src/web2spec/cartographer.py`
+
+What happens:
+
+- The crawler opens a page from the queue.
+- It navigates using a more tolerant strategy than strict `networkidle`:
+  - first `domcontentloaded`
+  - then `load`
+  - then a short `networkidle` wait if available
+
+Why it matters:
+
+- Some sites never fully settle into a clean `networkidle` state.
+- This makes crawling more robust on real-world docs sites and SPAs.
+
+### 5. Semantic Extraction Happens In The Browser
+
+File:
+
+- `src/web2spec/cartographer.py`
+
+What happens:
+
+- `EXTRACTION_SCRIPT` runs in the page.
+- It extracts:
+  - title
+  - headings
+  - semantic interactive elements
+  - metadata like `aria-label`, `id`, `name`, `placeholder`, `type`
+  - rough DOM coordinates through bounding boxes
+
+Why it matters:
+
+- This is the raw structured crawl layer.
+- It intentionally ignores most styling and focuses on behaviorally meaningful UI elements.
+
+### 6. Internal Links Are Normalized And Filtered
+
+Files:
+
+- `src/web2spec/cartographer.py`
+- `src/web2spec/utils.py`
+
+What happens:
+
+- Extracted links are resolved against the current page.
+- Fragments are removed.
+- External links are excluded from recursive crawling.
+- Canonical URLs are used to avoid duplicate queue entries.
+
+Why it matters:
+
+- This is how the site tree is built.
+- It is also the main guardrail against recrawling the same page under trivial URL variations.
+
+### 7. Screenshot And Optional Overlay Are Generated
+
+Files:
+
+- `src/web2spec/cartographer.py`
+- `src/web2spec/distiller.py`
+
+What happens:
+
+- A full-page screenshot is saved.
+- If overlay generation is enabled, the semantic element bounding boxes are drawn on a copy of the screenshot.
+
+Why it matters:
+
+- The screenshot gives the multimodal model visual context.
+- The overlay helps humans validate whether the extraction roughly matches what is visible.
+
+### 8. The Distiller Converts Raw Structure Into LLM-Friendly Markdown
+
+File:
+
+- `src/web2spec/distiller.py`
+
+What happens:
+
+- The raw elements are cleaned and deduplicated.
+- Large navigation blocks are compressed.
+- Links are truncated to reduce token waste.
+- A structured markdown representation is generated and saved to `markdown/`.
+
+Why it matters:
+
+- This is the main token-control layer.
+- Better distillation usually improves analysis quality more than prompt tweaks.
+
+### 9. The Analyst Sends Markdown Plus Screenshot To The LLM
+
+File:
+
+- `src/web2spec/analyst.py`
+
+What happens:
+
+- The prompt is built from:
+  - the page URL
+  - the title
+  - the template key
+  - optional business context
+  - the distilled markdown
+- The screenshot is attached.
+- The LLM is instructed to return JSON only.
+
+Why it matters:
+
+- This is the reasoning layer.
+- If you want different documentation outputs, this is the main place to change them.
+
+### 10. The JSON Response Is Parsed Into A Typed Analysis Object
+
+Files:
+
+- `src/web2spec/analyst.py`
+- `src/web2spec/models.py`
+
+What happens:
+
+- The model response is parsed as JSON.
+- It is converted into a `PageAnalysis` object containing:
+  - `functional_documentation`
+  - `user_stories`
+  - `intent_map`
+  - `raw_response`
+
+Why it matters:
+
+- This is the contract between the LLM and the rest of the application.
+- If this schema changes, the parser and renderers must change too.
+
+### 11. The Crawl Loop Queues More Pages
+
+File:
+
+- `src/web2spec/pipeline.py`
+
+What happens:
+
+- The pipeline looks at the current page's internal links.
+- It adds new canonical URLs to the queue if:
+  - they are not already visited
+  - they are not already queued
+  - the depth limit has not been exceeded
+  - the max-pages limit has not been exceeded
+
+Why it matters:
+
+- This is how recursion works.
+- It is also how the PoC stays bounded.
+
+### 12. Final Artifacts Are Written
+
+Files:
+
+- `src/web2spec/report.py`
+- `src/web2spec/pipeline.py`
+
+What happens:
+
+- `site_map.json` is written from the raw page snapshots.
+- `analysis.json` is written from the parsed LLM outputs.
+- `report.md` is written as a readable summary.
+- `dashboard.html` is generated as a visual review interface.
+
+Why it matters:
+
+- This is the handoff layer for users and downstream systems.
+
+## File Map
+
+If you want to change the system quickly, this is the shortest map:
+
+- `src/web2spec/cli.py`: runtime flags and input handling
+- `src/web2spec/config.py`: runtime configuration defaults
+- `src/web2spec/utils.py`: URL normalization and shared helpers
+- `src/web2spec/cartographer.py`: browser crawling and semantic extraction
+- `src/web2spec/distiller.py`: markdown shaping and noise reduction
+- `src/web2spec/analyst.py`: prompts, model calls, and response parsing
+- `src/web2spec/models.py`: structured data contracts
+- `src/web2spec/pipeline.py`: crawl loop, dedupe, recursion, progress logging
+- `src/web2spec/report.py`: final output files and dashboard generation
