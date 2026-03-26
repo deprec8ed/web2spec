@@ -7,49 +7,20 @@ from pathlib import Path
 from typing import Any
 
 from .config import RunConfig
+from .i18n import get_text
 from .models import CTAIntent, PageAnalysis, PageSnapshot
 from .utils import image_to_base64, image_to_data_uri
-
-
-SYSTEM_PROMPT = """Analizujesz strony internetowe dla zespołów produktowych i delivery.
-
-Otrzymasz:
-1. Oczyszczony opis strony w formacie markdown
-2. Zrzut ekranu tej samej strony
-
-Zwróć wyłącznie JSON w takim kształcie:
-{
-  "dokumentacja_funkcjonalna": "krótki akapit",
-  "historie_uzytkownika": [
-    "Jako [Typ Użytkownika] chcę [Działanie], aby [Wartość]."
-  ],
-  "mapa_intencji": [
-    {
-      "cta": "etykieta przycisku lub głównego linku",
-      "dlaczego": "motywacja użytkownika lub problem, który ta akcja rozwiązuje",
-      "dowody": ["konkretny szczegół z markdown lub zrzutu ekranu"]
-    }
-  ]
-}
-
-Zasady:
-- Nie wymyślaj funkcji, których nie widać w markdown ani na zrzucie ekranu.
-- Jeśli dowody są słabe, zaznacz to wprost w treści odpowiedzi.
-- Preferuj od 2 do 5 historii użytkownika.
-- Skup mapę intencji na głównych CTA, a nie na drobnych linkach w stopce.
-- Wykorzystuj podany kontekst biznesowy jako wskazówkę, ale nie pozwól, aby był ważniejszy niż faktyczne dowody ze strony.
-- Wszystkie treści opisowe zwracaj po polsku.
-"""
 
 
 class Analyst:
     def __init__(self, config: RunConfig) -> None:
         self.config = config
         self.model = config.resolved_model()
+        self.text = get_text(config.locale)["analyst"]
 
     async def analyze(self, snapshot: PageSnapshot) -> PageAnalysis:
         if snapshot.screenshot_path is None:
-            raise RuntimeError("Do analizy multimodalnej wymagany jest zrzut ekranu.")
+            raise RuntimeError("Screenshot is required for multimodal analysis.")
 
         prompt = self._build_prompt(snapshot)
         raw = await self._request(prompt, snapshot.screenshot_path)
@@ -76,17 +47,17 @@ class Analyst:
         )
 
     def _build_prompt(self, snapshot: PageSnapshot) -> str:
-        business_context = self.config.business_context or "Nie podano kontekstu biznesowego."
-        return f"""Przeanalizuj tę stronę.
+        business_context = self.config.business_context or self.text["no_business_context"]
+        return f"""{self.text['analyze_page']}
 
 URL: {snapshot.url}
-Tytuł: {snapshot.title}
-Szablon: {snapshot.template_key}
+{self.text['title']}: {snapshot.title}
+{self.text['template']}: {snapshot.template_key}
 
-Kontekst biznesowy:
+{self.text['business_context']}:
 {business_context}
 
-Markdown:
+{self.text['markdown']}:
 {snapshot.markdown}
 """
 
@@ -101,14 +72,14 @@ Markdown:
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:
-            raise RuntimeError("Pakiet OpenAI SDK nie jest zainstalowany.") from exc
+            raise RuntimeError("OpenAI SDK is not installed.") from exc
 
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         response = await client.chat.completions.create(
             model=self.model,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.text["system_prompt"]},
                 {
                     "role": "user",
                     "content": [
@@ -125,29 +96,29 @@ Markdown:
             api_key = os.environ.get("AZURE_API_KEY")
             base_url = os.environ.get("AZURE_BASE_URL")
             if not api_key or not base_url:
-                raise RuntimeError("Do analizy przez Azure OpenAI wymagane są zmienne AZURE_API_KEY oraz AZURE_BASE_URL.")
+                raise RuntimeError("AZURE_API_KEY and AZURE_BASE_URL are required for Azure OpenAI analysis.")
             return api_key, base_url.rstrip("/")
 
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("Do analizy przez OpenAI wymagana jest zmienna OPENAI_API_KEY.")
+            raise RuntimeError("OPENAI_API_KEY is required for OpenAI analysis.")
         return api_key, None
 
     async def _request_anthropic(self, prompt: str, screenshot_path) -> str:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("Do analizy przez Anthropic wymagana jest zmienna ANTHROPIC_API_KEY.")
+            raise RuntimeError("ANTHROPIC_API_KEY is required for Anthropic analysis.")
 
         try:
             from anthropic import AsyncAnthropic
         except ImportError as exc:
-            raise RuntimeError("Pakiet Anthropic SDK nie jest zainstalowany.") from exc
+            raise RuntimeError("Anthropic SDK is not installed.") from exc
 
         client = AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
             model=self.model,
             max_tokens=1400,
-            system=SYSTEM_PROMPT,
+            system=self.text["system_prompt"],
             messages=[
                 {
                     "role": "user",
@@ -182,7 +153,7 @@ def _extract_json(payload: str) -> dict[str, Any]:
 
     match = re.search(r"\{.*\}", payload, re.DOTALL)
     if not match:
-        raise ValueError(f"Odpowiedź modelu nie zawierała JSON-a: {payload[:200]}")
+        raise ValueError(f"LLM response did not contain JSON: {payload[:200]}")
     return json.loads(match.group(0))
 
 

@@ -51,6 +51,7 @@ web2spec https://example.com \
   --depth-limit 2 \
   --provider azure-openai \
   --model gpt-5.4 \
+  --locale pl \
   --business-context "Platforma SaaS B2B do planowania produktu i analizy." \
   --output-dir outputs/example
 ```
@@ -61,6 +62,7 @@ Przydatne flagi:
 - `--provider openai`: używa publicznego OpenAI API.
 - `--provider anthropic`: używa Anthropic.
 - `--model ...`: nadpisuje nazwę modelu.
+- `--locale pl|en`: przełącza język wygenerowanych artefaktów i odpowiedzi modelu.
 - `--browser-channel chrome`: używa lokalnie zainstalowanego Chrome zamiast przeglądarki zarządzanej przez Playwright.
 - `--browser-executable-path /path/to/browser`: jawna ścieżka do przeglądarki.
 - `--no-overlay`: pomija generowanie nakładek z obramowaniami.

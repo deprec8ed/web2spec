@@ -4,31 +4,19 @@ from collections import defaultdict
 from pathlib import Path
 
 from .config import RunConfig
+from .i18n import get_text
 from .models import PageSnapshot, SemanticElement
 from .utils import ensure_dir, normalize_whitespace, safe_filename_from_url
 
 MAX_LABEL_LENGTH = 80
 MAX_LINKS_PER_PAGE = 60
 MAX_INTERNAL_LINKS = 40
-SECTION_TITLES = (
-    ("nav", "Nawigacja"),
-    ("a", "Odnośniki"),
-    ("button", "Przyciski"),
-    ("input", "Pola"),
-    ("form", "Formularze"),
-)
-TAG_LABELS = {
-    "nav": "Nawigacja",
-    "a": "Odnośnik",
-    "button": "Przycisk",
-    "input": "Pole",
-    "form": "Formularz",
-}
 
 
 class Distiller:
     def __init__(self, config: RunConfig) -> None:
         self.config = config
+        self.text = get_text(config.locale)["distiller"]
         self.markdown_dir = ensure_dir(config.output_dir / "markdown")
         self.overlays_dir = ensure_dir(config.output_dir / "overlays")
         self._seen_templates: set[str] = set()
@@ -54,18 +42,19 @@ class Distiller:
         lines = [
             f"# {snapshot.title}",
             "",
-            f"- URL: {snapshot.url}",
-            f"- Głębokość: {snapshot.depth}",
-            f"- Szablon: {snapshot.template_key}",
+            f"- {self.text['url']}: {snapshot.url}",
+            f"- {self.text['depth']}: {snapshot.depth}",
+            f"- {self.text['template']}: {snapshot.template_key}",
             "",
         ]
 
         if snapshot.headings:
-            lines.extend(["## Nagłówki", ""])
+            lines.extend([f"## {self.text['headings']}", ""])
             lines.extend(f"- {heading}" for heading in snapshot.headings)
             lines.append("")
 
-        for tag, section_name in SECTION_TITLES:
+        for tag in ("nav", "a", "button", "input", "form"):
+            section_name = self.text["section_titles"][tag]
             elements = grouped.get(tag, [])
             if not elements:
                 continue
@@ -75,15 +64,24 @@ class Distiller:
             if tag == "a":
                 total_links = self._count_renderable_links(snapshot.elements)
                 if total_links > len(elements):
-                    lines.append(f"- [Lista odnośników skrócona: pokazano {len(elements)} z {total_links}]")
+                    lines.append(
+                        "- ["
+                        + self.text["link_inventory_truncated"].format(shown=len(elements), total=total_links)
+                        + "]"
+                    )
             lines.append("")
 
         if snapshot.internal_links:
-            lines.extend(["## Linki wewnętrzne", ""])
+            lines.extend([f"## {self.text['internal_links']}", ""])
             lines.extend(f"- {link}" for link in snapshot.internal_links[:MAX_INTERNAL_LINKS])
             if len(snapshot.internal_links) > MAX_INTERNAL_LINKS:
                 lines.append(
-                    f"- [Lista linków wewnętrznych skrócona: pokazano {MAX_INTERNAL_LINKS} z {len(snapshot.internal_links)}]"
+                    "- ["
+                    + self.text["internal_link_inventory_truncated"].format(
+                        shown=MAX_INTERNAL_LINKS,
+                        total=len(snapshot.internal_links),
+                    )
+                    + "]"
                 )
             lines.append("")
 
@@ -105,12 +103,12 @@ class Distiller:
         if element.input_type:
             metadata.append(f"type={element.input_type!r}")
         if element.tag in {"button", "input", "form"} and element.section_text:
-            metadata.append(f"context={element.section_text[:120]!r}")
+            metadata.append(f"{self.text['context']}={element.section_text[:120]!r}")
         elif element.tag == "nav":
             nav_item_count = len(element.text.split())
-            metadata.append(f"elementy~{nav_item_count}")
+            metadata.append(f"{self.text['items']}~{nav_item_count}")
         suffix = f" ({', '.join(metadata)})" if metadata else ""
-        tag_label = TAG_LABELS.get(element.tag, element.tag.capitalize())
+        tag_label = self.text["tag_labels"].get(element.tag, element.tag.capitalize())
         return f"- [{tag_label}: {label!r}]{suffix}"
 
     def _select_elements(self, elements: list[SemanticElement]) -> list[SemanticElement]:
@@ -151,7 +149,7 @@ class Distiller:
     def _display_label(self, element: SemanticElement) -> str:
         label = normalize_whitespace(element.label())
         if element.tag == "nav" and (len(label) > 100 or len(label.split()) > 14):
-            return "Menu nawigacyjne"
+            return self.text["navigation_menu"]
         if len(label) > MAX_LABEL_LENGTH:
             return f"{label[: MAX_LABEL_LENGTH - 1].rstrip()}…"
         return label

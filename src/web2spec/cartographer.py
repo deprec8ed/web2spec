@@ -96,7 +96,7 @@ class Cartographer:
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
-            raise RuntimeError("Playwright nie jest zainstalowany. Uruchom `pip install -e .` oraz `playwright install chromium`.") from exc
+            raise RuntimeError("Playwright is not installed. Run `pip install -e .` and `playwright install chromium`.") from exc
 
         self._playwright = await async_playwright().start()
         launch_kwargs = self._launch_kwargs()
@@ -122,7 +122,7 @@ class Cartographer:
 
     async def capture_page(self, item: QueueItem) -> PageSnapshot:
         if self._context is None:
-            raise RuntimeError("Kontekst przeglądarki nie został zainicjalizowany.")
+            raise RuntimeError("Cartographer context has not been initialized.")
 
         page = await self._context.new_page()
         try:
@@ -213,7 +213,7 @@ class Cartographer:
                     await page.wait_for_timeout(750)
 
         if last_error is None:
-            raise RuntimeError(f"Nie udało się przejść do strony {url}")
+            raise RuntimeError(f"Navigation failed for {url}")
         raise last_error
 
 

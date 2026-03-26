@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from .i18n import DEFAULT_LOCALE
+
 
 @dataclass(slots=True)
 class RunConfig:
@@ -22,6 +24,7 @@ class RunConfig:
     browser_channel: str | None = None
     browser_executable_path: str | None = None
     show_progress: bool = True
+    locale: str = DEFAULT_LOCALE
 
     def resolved_model(self) -> str:
         if self.model:

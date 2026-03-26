@@ -11,6 +11,7 @@ def test_distiller_renders_clean_markdown(tmp_path: Path) -> None:
         output_dir=tmp_path,
         capture_overlay=False,
         skip_analysis=True,
+        locale="en",
     )
     distiller = Distiller(config)
     snapshot = PageSnapshot(
@@ -31,8 +32,8 @@ def test_distiller_renders_clean_markdown(tmp_path: Path) -> None:
     distilled = distiller.distill(snapshot)
 
     assert "# Example Home" in distilled.markdown
-    assert "## Przyciski" in distilled.markdown
-    assert "[Przycisk: 'Get Started']" in distilled.markdown
+    assert "## Buttons" in distilled.markdown
+    assert "[Button: 'Get Started']" in distilled.markdown
     assert "https://example.com/pricing" in distilled.markdown
 
 
@@ -64,3 +65,28 @@ def test_distiller_compresses_large_nav_blocks_and_dedupes_links(tmp_path: Path)
     assert "Menu nawigacyjne" in distilled.markdown
     assert distilled.markdown.count("https://example.com/docs") >= 1
     assert distilled.markdown.count("[Odnośnik: 'Docs']") == 1
+
+
+def test_distiller_supports_polish_locale(tmp_path: Path) -> None:
+    config = RunConfig(
+        start_url="https://example.com",
+        output_dir=tmp_path,
+        capture_overlay=False,
+        skip_analysis=True,
+        locale="pl",
+    )
+    distiller = Distiller(config)
+    snapshot = PageSnapshot(
+        url="https://example.com",
+        depth=0,
+        title="Example Home",
+        headings=["Ship faster"],
+        elements=[SemanticElement(tag="button", text="Get Started", aria_label="Get Started")],
+        internal_links=[],
+        template_key="home-1234567890",
+    )
+
+    distilled = distiller.distill(snapshot)
+
+    assert "## Przyciski" in distilled.markdown
+    assert "[Przycisk: 'Get Started']" in distilled.markdown
