@@ -99,3 +99,29 @@ class PipelineResult:
     site_map_path: Path
     analysis_path: Path
     dashboard_path: Path
+
+
+@dataclass(slots=True)
+class GuideStep:
+    step_number: int
+    heading: str
+    action_bullets: list[str]
+    what_you_see: str
+    screenshot_path: Path | None = None
+
+
+@dataclass(slots=True)
+class GuideSection:
+    url: str
+    depth: int
+    title: str
+    intro: str
+    steps: list[GuideStep]
+    parent_url: str | None = None
+
+
+@dataclass(slots=True)
+class GuideDocument:
+    root_url: str
+    sections: list[GuideSection]
+    guide_path: Path | None = None

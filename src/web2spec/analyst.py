@@ -8,7 +8,7 @@ from typing import Any
 
 from .config import RunConfig
 from .i18n import get_text
-from .models import CTAIntent, PageAnalysis, PageSnapshot
+from .models import CTAIntent, GuideSection, GuideStep, PageAnalysis, PageSnapshot
 from .utils import image_to_base64, image_to_data_uri
 
 
@@ -17,6 +17,7 @@ class Analyst:
         self.config = config
         self.model = config.resolved_model()
         self.text = get_text(config.locale)["analyst"]
+        self.guide_text = get_text(config.locale)["guide"]
 
     async def analyze(self, snapshot: PageSnapshot) -> PageAnalysis:
         if snapshot.screenshot_path is None:
@@ -46,6 +47,50 @@ class Analyst:
             raw_response=parsed,
         )
 
+    async def analyze_for_guide(self, snapshot: PageSnapshot) -> GuideSection:
+        if snapshot.screenshot_path is None:
+            raise RuntimeError("Screenshot is required for guide generation.")
+
+        prompt = self._build_guide_prompt(snapshot)
+        raw = await self._request_guide(prompt, snapshot.screenshot_path)
+        parsed = _extract_json(raw)
+
+        steps = []
+        for idx, step_data in enumerate(_get_list(parsed, "steps"), 1):
+            step = GuideStep(
+                step_number=idx,
+                heading=_get_str(step_data, "heading"),
+                action_bullets=[
+                    bullet.strip()
+                    for bullet in _get_list(step_data, "action_bullets")
+                    if isinstance(bullet, str) and bullet.strip()
+                ],
+                what_you_see=_get_str(step_data, "what_you_see"),
+                screenshot_path=snapshot.screenshot_path,
+            )
+            steps.append(step)
+
+        return GuideSection(
+            url=snapshot.url,
+            depth=snapshot.depth,
+            title=_get_str(parsed, "section_title"),
+            intro=_get_str(parsed, "intro"),
+            steps=steps if steps else self._fallback_steps(snapshot),
+            parent_url=snapshot.parent_url,
+        )
+
+    def _fallback_steps(self, snapshot: PageSnapshot) -> list[GuideStep]:
+        """Fallback when LLM doesn't return steps: create a minimal step from the markdown."""
+        return [
+            GuideStep(
+                step_number=1,
+                heading=snapshot.title,
+                action_bullets=["View the page content above."],
+                what_you_see=snapshot.markdown[:200] + "..." if snapshot.markdown else snapshot.title,
+                screenshot_path=snapshot.screenshot_path,
+            )
+        ]
+
     def _build_prompt(self, snapshot: PageSnapshot) -> str:
         business_context = self.config.business_context or self.text["no_business_context"]
         return f"""{self.text['analyze_page']}
@@ -61,13 +106,34 @@ URL: {snapshot.url}
 {snapshot.markdown}
 """
 
+    def _build_guide_prompt(self, snapshot: PageSnapshot) -> str:
+        business_context = self.config.business_context or self.guide_text["no_business_context"]
+        return f"""{self.guide_text['analyze_page']}
+
+URL: {snapshot.url}
+{self.guide_text['title']}: {snapshot.title}
+{self.guide_text['template']}: {snapshot.template_key}
+
+{self.guide_text['business_context']}:
+{business_context}
+
+{self.guide_text['markdown']}:
+{snapshot.markdown}
+"""
+
     async def _request(self, prompt: str, screenshot_path) -> str:
         if self.config.provider == "anthropic":
             return await self._request_anthropic(prompt, screenshot_path)
         return await self._request_openai(prompt, screenshot_path)
 
-    async def _request_openai(self, prompt: str, screenshot_path: Path) -> str:
+    async def _request_guide(self, prompt: str, screenshot_path) -> str:
+        if self.config.provider == "anthropic":
+            return await self._request_anthropic(prompt, screenshot_path, system_prompt=self.guide_text["system_prompt"])
+        return await self._request_openai(prompt, screenshot_path, system_prompt=self.guide_text["system_prompt"])
+
+    async def _request_openai(self, prompt: str, screenshot_path: Path, system_prompt: str | None = None) -> str:
         api_key, base_url = self._resolve_openai_credentials()
+        system = system_prompt or self.text["system_prompt"]
 
         try:
             from openai import AsyncOpenAI
@@ -79,7 +145,7 @@ URL: {snapshot.url}
             model=self.model,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": self.text["system_prompt"]},
+                {"role": "system", "content": system},
                 {
                     "role": "user",
                     "content": [
@@ -104,10 +170,11 @@ URL: {snapshot.url}
             raise RuntimeError("OPENAI_API_KEY is required for OpenAI analysis.")
         return api_key, None
 
-    async def _request_anthropic(self, prompt: str, screenshot_path) -> str:
+    async def _request_anthropic(self, prompt: str, screenshot_path, system_prompt: str | None = None) -> str:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is required for Anthropic analysis.")
+        system = system_prompt or self.text["system_prompt"]
 
         try:
             from anthropic import AsyncAnthropic
@@ -118,7 +185,7 @@ URL: {snapshot.url}
         response = await client.messages.create(
             model=self.model,
             max_tokens=1400,
-            system=self.text["system_prompt"],
+            system=system,
             messages=[
                 {
                     "role": "user",

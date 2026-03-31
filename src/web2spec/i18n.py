@@ -156,6 +156,48 @@ Rules:
             "intent_map": "Intent Map",
             "distilled_markdown": "Distilled Markdown",
         },
+        "guide": {
+            "system_prompt": """You generate step-by-step user guides for website pages.
+
+You will receive:
+1. A cleaned markdown description of a page
+2. A screenshot of the same page
+
+Return JSON only with this shape:
+{
+  "section_title": "meaningful title for this page's guide",
+  "intro": "1-2 sentences describing what this page lets users do",
+  "steps": [
+    {
+      "heading": "short step title",
+      "action_bullets": ["Click [Button Name]", "Enter your email"],
+      "what_you_see": "description of the UI state after this step"
+    }
+  ]
+}
+
+Rules:
+- Each step is a discrete action with a clear UI outcome.
+- action_bullets are imperative sentences; wrap UI element names in [brackets].
+- what_you_see describes what changed or what the user sees next.
+- Prefer 3-8 steps per page.
+- Do not invent features not visible in markdown or screenshot.
+- Use any provided business context as guidance, but prioritize actual page evidence.
+- Return all text in English.
+""",
+            "no_business_context": "No business context provided.",
+            "analyze_page": "Generate a step-by-step guide for this page.",
+            "title": "Title",
+            "template": "Template",
+            "business_context": "Business Context",
+            "markdown": "Markdown",
+            "guide_title": "Generated Guide",
+            "page_guide": "Guide",
+            "step": "Step",
+            "what_you_see": "What You See",
+            "actions": "Actions",
+            "no_guide": "Guide generation skipped.",
+        },
     },
     "pl": {
         "distiller": {
@@ -306,6 +348,48 @@ Zasady:
             "user_stories": "Historie użytkownika",
             "intent_map": "Mapa intencji",
             "distilled_markdown": "Oczyszczony Markdown",
+        },
+        "guide": {
+            "system_prompt": """Generujesz przewodniki krok po kroku dla stron internetowych.
+
+Otrzymasz:
+1. Oczyszczony opis strony w formacie markdown
+2. Zrzut ekranu tej samej strony
+
+Zwróć wyłącznie JSON w takim kształcie:
+{
+  "section_title": "znaczący tytuł przewodnika dla tej strony",
+  "intro": "1-2 zdania opisujące, co użytkownik może zrobić na tej stronie",
+  "steps": [
+    {
+      "heading": "krótki tytuł kroku",
+      "action_bullets": ["Kliknij [Nazwa Przycisku]", "Wpisz swój email"],
+      "what_you_see": "opis stanu interfejsu po tym kroku"
+    }
+  ]
+}
+
+Zasady:
+- Każdy krok to odrębna akcja z jasnym rezultatem w UI.
+- action_bullets to zdania rozkazujące; zawijaj nazwy elementów UI w [nawiasy].
+- what_you_see opisuje, co się zmieniło lub co użytkownik widzi dalej.
+- Preferuj od 3 do 8 kroków na stronę.
+- Nie wymyślaj funkcji niewidocznych w markdown ani na zrzucie ekranu.
+- Używaj podanego kontekstu biznesowego jako wskazówkę, ale priorytet dla faktycznych dowodów ze strony.
+- Zwróć całą treść po polsku.
+""",
+            "no_business_context": "Nie podano kontekstu biznesowego.",
+            "analyze_page": "Wygeneruj przewodnik krok po kroku dla tej strony.",
+            "title": "Tytuł",
+            "template": "Szablon",
+            "business_context": "Kontekst biznesowy",
+            "markdown": "Markdown",
+            "guide_title": "Wygenerowany przewodnik",
+            "page_guide": "Przewodnik",
+            "step": "Krok",
+            "what_you_see": "Co zobaczysz na ekranie",
+            "actions": "Akcje",
+            "no_guide": "Generowanie przewodnika pominięte.",
         },
     },
 }

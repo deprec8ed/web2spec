@@ -25,6 +25,7 @@ class RunConfig:
     browser_executable_path: str | None = None
     show_progress: bool = True
     locale: str = DEFAULT_LOCALE
+    output_format: str = "report"
 
     def resolved_model(self) -> str:
         if self.model:

@@ -52,6 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_LOCALE,
         help="Locale for generated artifacts and analysis output.",
     )
+    parser.add_argument(
+        "--output-format",
+        choices=("report", "guide", "both"),
+        default="report",
+        help="Output format: 'report' for markdown/dashboard, 'guide' for DOCX user guide, 'both' for all.",
+    )
     return parser
 
 
@@ -84,6 +90,7 @@ def main() -> None:
         browser_executable_path=args.browser_executable_path,
         show_progress=not args.quiet,
         locale=args.locale,
+        output_format=args.output_format,
     )
     try:
         result = run_pipeline(config)
