@@ -98,10 +98,15 @@ def main() -> None:
         print("Interrupted.")
         raise SystemExit(130)
 
-    print(f"Report: {result.report_path}")
-    print(f"Dashboard: {result.dashboard_path}")
-    print(f"Sitemap JSON: {result.site_map_path}")
-    print(f"Analysis JSON: {result.analysis_path}")
+    if config.output_format in ("report", "both"):
+        print(f"Report: {result.report_path}")
+        print(f"Dashboard: {result.dashboard_path}")
+        print(f"Sitemap JSON: {result.site_map_path}")
+        print(f"Analysis JSON: {result.analysis_path}")
+    
+    if config.output_format in ("guide", "both"):
+        print(f"Guide: {result.guide_path}")
+    
     if result.errors:
         print("Errors:")
         for error in result.errors:

@@ -99,6 +99,7 @@ class PipelineResult:
     site_map_path: Path
     analysis_path: Path
     dashboard_path: Path
+    guide_path: Path | None = None
 
 
 @dataclass(slots=True)

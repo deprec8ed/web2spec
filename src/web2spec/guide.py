@@ -4,10 +4,12 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from .i18n import get_text
-from .models import GuideDocument, GuideSection, GuideStep, PageSnapshot
+from .models import GuideSection
 
 
 # Color scheme (RGB)
@@ -19,25 +21,30 @@ COLOR_SECTION_TEXT = RGBColor(255, 255, 255)  # White
 COLOR_STEP_TEXT = RGBColor(0, 0, 0)  # Black
 
 
+def _set_paragraph_shading(paragraph, fill_hex: str) -> None:
+    """Apply background shading to a paragraph using docx XML primitives."""
+    p_pr = paragraph._p.get_or_add_pPr()
+    shd = p_pr.find(qn("w:shd"))
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        p_pr.append(shd)
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill_hex)
+
+
 def _add_part_heading(doc: Document, text: str) -> None:
     """Add a part-level heading (CZĘŚĆ) with teal background."""
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(12)
     p.paragraph_format.space_after = Pt(12)
     
-    # Add shading (background color)
-    shading_elm = doc._element.new_child_elm('w:shd')
-    shading_elm.set('w:fill', 'B3B3B3')  # This won't work directly; use run formatting
-    
     run = p.add_run(text)
     run.font.size = Pt(14)
     run.font.bold = True
     run.font.color.rgb = COLOR_PART_TEXT
-    
-    # Apply background via paragraph shading
-    p_format = p._element.get_or_add_pPr()
-    shading_elm = p_format.get_or_add_shd()
-    shading_elm.set('w:fill', '00B3B3')  # Teal
+
+    _set_paragraph_shading(p, "00B3B3")  # Teal
     
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -52,11 +59,8 @@ def _add_section_heading(doc: Document, text: str, depth: int) -> None:
     run.font.size = Pt(12)
     run.font.bold = True
     run.font.color.rgb = COLOR_SECTION_TEXT
-    
-    # Apply grey background
-    p_format = p._element.get_or_add_pPr()
-    shading_elm = p_format.get_or_add_shd()
-    shading_elm.set('w:fill', '808080')  # Grey
+
+    _set_paragraph_shading(p, "808080")  # Grey
     
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
@@ -71,11 +75,8 @@ def _add_step_heading(doc: Document, step_number: int, heading: str) -> None:
     run.font.size = Pt(11)
     run.font.bold = True
     run.font.color.rgb = COLOR_STEP_TEXT
-    
-    # Apply light green background
-    p_format = p._element.get_or_add_pPr()
-    shading_elm = p_format.get_or_add_shd()
-    shading_elm.set('w:fill', '90EE90')  # Light green
+
+    _set_paragraph_shading(p, "90EE90")  # Light green
     
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 

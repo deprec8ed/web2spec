@@ -7,7 +7,8 @@ from .analyst import Analyst
 from .cartographer import Cartographer
 from .config import RunConfig
 from .distiller import Distiller
-from .models import PageAnalysis, PageSnapshot, PipelineResult, QueueItem
+from .guide import write_guide
+from .models import GuideDocument, GuideSection, PageAnalysis, PageSnapshot, PipelineResult, QueueItem
 from .report import build_report, write_analysis, write_dashboard, write_site_map
 from .utils import canonicalize_url, ensure_dir
 
@@ -17,6 +18,7 @@ class PipelineState(TypedDict):
     visited: list[str]
     pages: list[PageSnapshot]
     analyses: dict[str, PageAnalysis]
+    guide_sections: list[GuideSection]
     errors: list[str]
 
 
@@ -44,6 +46,7 @@ class Web2SpecPipeline:
                 visited = set(state["visited"])
                 pages = list(state["pages"])
                 analyses = dict(state["analyses"])
+                guide_sections = list(state["guide_sections"])
                 errors = list(state["errors"])
 
                 current = pending.pop(0)
@@ -53,6 +56,7 @@ class Web2SpecPipeline:
                         "visited": list(visited),
                         "pages": pages,
                         "analyses": analyses,
+                        "guide_sections": guide_sections,
                         "errors": errors,
                     }
 
@@ -71,7 +75,11 @@ class Web2SpecPipeline:
 
                     if analyst is not None:
                         self._log(f"[analyze] url={snapshot.url} model={self.config.resolved_model()}")
-                        analyses[snapshot.url] = await analyst.analyze(snapshot)
+                        if self.config.output_format in ("report", "both"):
+                            analyses[snapshot.url] = await analyst.analyze(snapshot)
+                        if self.config.output_format in ("guide", "both"):
+                            guide_section = await analyst.analyze_for_guide(snapshot)
+                            guide_sections.append(guide_section)
                         self._log(f"[done] analyzed url={snapshot.url}")
 
                     if current.depth < self.config.depth_limit:
@@ -99,6 +107,7 @@ class Web2SpecPipeline:
                     "visited": list(visited),
                     "pages": pages,
                     "analyses": analyses,
+                    "guide_sections": guide_sections,
                     "errors": errors,
                 }
 
@@ -117,26 +126,33 @@ class Web2SpecPipeline:
                     "visited": [],
                     "pages": [],
                     "analyses": {},
+                    "guide_sections": [],
                     "errors": [],
                 }
             )
 
         pages = final_state["pages"]
         analyses = final_state["analyses"]
+        guide_sections = final_state["guide_sections"]
         errors = final_state["errors"]
 
         report_path = self.config.output_dir / "report.md"
         site_map_path = self.config.output_dir / "site_map.json"
         analysis_path = self.config.output_dir / "analysis.json"
         dashboard_path = self.config.output_dir / "dashboard.html"
+        guide_path = self.config.output_dir / "guide.docx"
 
-        report_path.write_text(
-            build_report(start_url, pages, analyses, errors, locale=self.config.locale),
-            encoding="utf-8",
-        )
-        write_site_map(site_map_path, pages, errors, locale=self.config.locale)
-        write_analysis(analysis_path, analyses, locale=self.config.locale)
-        write_dashboard(dashboard_path, start_url, pages, analyses, errors, locale=self.config.locale)
+        if self.config.output_format in ("report", "both"):
+            report_path.write_text(
+                build_report(start_url, pages, analyses, errors, locale=self.config.locale),
+                encoding="utf-8",
+            )
+            write_site_map(site_map_path, pages, errors, locale=self.config.locale)
+            write_analysis(analysis_path, analyses, locale=self.config.locale)
+            write_dashboard(dashboard_path, start_url, pages, analyses, errors, locale=self.config.locale)
+
+        if self.config.output_format in ("guide", "both"):
+            write_guide(guide_path, start_url, guide_sections, locale=self.config.locale)
 
         return PipelineResult(
             pages=pages,
@@ -146,6 +162,7 @@ class Web2SpecPipeline:
             site_map_path=site_map_path,
             analysis_path=analysis_path,
             dashboard_path=dashboard_path,
+            guide_path=guide_path if self.config.output_format in ("guide", "both") else None,
         )
 
     def _log(self, message: str) -> None:
