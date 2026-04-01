@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import TypedDict
 
 from .analyst import Analyst
 from .cartographer import Cartographer
 from .config import RunConfig
 from .distiller import Distiller
-from .guide import write_guide
+from .guide import attach_focused_step_images, write_guide
 from .models import GuideDocument, GuideSection, PageAnalysis, PageSnapshot, PipelineResult, QueueItem
 from .report import build_report, write_analysis, write_dashboard, write_site_map
 from .utils import canonicalize_url, ensure_dir
@@ -78,13 +79,25 @@ class Web2SpecPipeline:
                         if self.config.output_format in ("report", "both"):
                             analyses[snapshot.url] = await analyst.analyze(snapshot)
                         if self.config.output_format in ("guide", "both"):
-                            guide_section = await analyst.analyze_for_guide(snapshot)
-                            guide_sections.append(guide_section)
+                            page_is_relevant = _is_goal_relevant(snapshot, self.config.goal_context)
+                            if self.config.intent_only and self.config.goal_context and not page_is_relevant:
+                                self._log(f"[guide-skip] url={snapshot.url} reason=not_goal_relevant")
+                            else:
+                                guide_section = await analyst.analyze_for_guide(snapshot)
+                                guide_section = attach_focused_step_images(
+                                    guide_section,
+                                    snapshot,
+                                    self.config.output_dir / "guide_crops",
+                                    self.config.crop_top_padding,
+                                    self.config.crop_bottom_padding,
+                                )
+                                guide_sections.append(guide_section)
                         self._log(f"[done] analyzed url={snapshot.url}")
 
                     if current.depth < self.config.depth_limit:
                         queued_urls = {item.url for item in pending}
-                        for link in snapshot.internal_links:
+                        candidate_links = _prioritize_links_for_goal(snapshot.internal_links, self.config.goal_context)
+                        for link in candidate_links:
                             if link in visited or link in queued_urls:
                                 continue
                             if len(visited) + len(pending) >= self.config.max_pages:
@@ -172,3 +185,73 @@ class Web2SpecPipeline:
 
 def run_pipeline(config: RunConfig) -> PipelineResult:
     return asyncio.run(Web2SpecPipeline(config).run())
+
+
+_STOP_WORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "your",
+    "you",
+    "oraz",
+    "or",
+    "dla",
+    "aby",
+    "sie",
+    "się",
+    "ktore",
+    "które",
+}
+
+
+def _extract_goal_tokens(goal_context: str | None) -> list[str]:
+    if not goal_context:
+        return []
+    tokens = re.findall(r"[\w\-]{4,}", goal_context.casefold())
+    result: list[str] = []
+    for token in tokens:
+        if token in _STOP_WORDS or token.isdigit():
+            continue
+        if token not in result:
+            result.append(token)
+    return result
+
+
+def _is_goal_relevant(snapshot: PageSnapshot, goal_context: str | None) -> bool:
+    tokens = _extract_goal_tokens(goal_context)
+    if not tokens:
+        return True
+
+    haystack_parts = [snapshot.url, snapshot.title, " ".join(snapshot.headings), snapshot.markdown[:3000]]
+    for element in snapshot.elements[:200]:
+        haystack_parts.extend(
+            [
+                element.text or "",
+                element.aria_label or "",
+                element.placeholder or "",
+                element.name or "",
+                element.href or "",
+            ]
+        )
+    haystack = " ".join(haystack_parts).casefold()
+    matches = sum(1 for token in tokens if token in haystack)
+    threshold = 1 if len(tokens) <= 3 else 2
+    return matches >= threshold
+
+
+def _prioritize_links_for_goal(links: list[str], goal_context: str | None) -> list[str]:
+    tokens = _extract_goal_tokens(goal_context)
+    if not tokens:
+        return links
+
+    scored: list[tuple[int, str]] = []
+    for link in links:
+        lowered = link.casefold()
+        score = sum(1 for token in tokens if token in lowered)
+        scored.append((score, link))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [link for _, link in scored]

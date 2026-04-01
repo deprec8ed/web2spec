@@ -85,7 +85,7 @@ class Analyst:
             GuideStep(
                 step_number=1,
                 heading=snapshot.title,
-                action_bullets=["View the page content above."],
+                action_bullets=["Review the visible goal-related controls on this page."],
                 what_you_see=snapshot.markdown[:200] + "..." if snapshot.markdown else snapshot.title,
                 screenshot_path=snapshot.screenshot_path,
             )
@@ -108,6 +108,7 @@ URL: {snapshot.url}
 
     def _build_guide_prompt(self, snapshot: PageSnapshot) -> str:
         business_context = self.config.business_context or self.guide_text["no_business_context"]
+        goal_context = self.config.goal_context or self.guide_text["no_goal_context"]
         return f"""{self.guide_text['analyze_page']}
 
 URL: {snapshot.url}
@@ -116,6 +117,11 @@ URL: {snapshot.url}
 
 {self.guide_text['business_context']}:
 {business_context}
+
+{self.guide_text['goal_context']}:
+{goal_context}
+
+{self.guide_text['intent_scope_rules']}
 
 {self.guide_text['markdown']}:
 {snapshot.markdown}

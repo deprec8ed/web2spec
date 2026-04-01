@@ -26,6 +26,10 @@ class RunConfig:
     show_progress: bool = True
     locale: str = DEFAULT_LOCALE
     output_format: str = "report"
+    goal_context: str | None = None
+    intent_only: bool = False
+    crop_top_padding: int = 180
+    crop_bottom_padding: int = 260
 
     def resolved_model(self) -> str:
         if self.model:

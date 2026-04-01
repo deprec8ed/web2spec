@@ -58,6 +58,33 @@ def build_parser() -> argparse.ArgumentParser:
         default="report",
         help="Output format: 'report' for markdown/dashboard, 'guide' for DOCX user guide, 'both' for all.",
     )
+    parser.add_argument(
+        "--goal-context",
+        default=None,
+        help="Goal/intention text used to focus guide generation on relevant pages and actions.",
+    )
+    parser.add_argument(
+        "--goal-context-file",
+        default=None,
+        help="Path to a text or markdown file with the goal/intention for focused guide generation.",
+    )
+    parser.add_argument(
+        "--intent-only",
+        action="store_true",
+        help="When goal context is provided, generate guide sections only for goal-relevant pages.",
+    )
+    parser.add_argument(
+        "--crop-top-padding",
+        type=int,
+        default=180,
+        help="Top padding in pixels when cropping step screenshots around matched UI controls.",
+    )
+    parser.add_argument(
+        "--crop-bottom-padding",
+        type=int,
+        default=260,
+        help="Bottom padding in pixels when cropping step screenshots around matched UI controls.",
+    )
     return parser
 
 
@@ -67,6 +94,16 @@ def _load_business_context(args: argparse.Namespace) -> str | None:
         values.append(args.business_context.strip())
     if args.business_context_file:
         values.append(Path(args.business_context_file).read_text(encoding="utf-8").strip())
+    joined = "\n\n".join(value for value in values if value)
+    return joined or None
+
+
+def _load_goal_context(args: argparse.Namespace) -> str | None:
+    values: list[str] = []
+    if args.goal_context:
+        values.append(args.goal_context.strip())
+    if args.goal_context_file:
+        values.append(Path(args.goal_context_file).read_text(encoding="utf-8").strip())
     joined = "\n\n".join(value for value in values if value)
     return joined or None
 
@@ -91,6 +128,10 @@ def main() -> None:
         show_progress=not args.quiet,
         locale=args.locale,
         output_format=args.output_format,
+        goal_context=_load_goal_context(args),
+        intent_only=args.intent_only,
+        crop_top_padding=max(0, args.crop_top_padding),
+        crop_bottom_padding=max(0, args.crop_bottom_padding),
     )
     try:
         result = run_pipeline(config)

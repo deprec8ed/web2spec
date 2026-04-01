@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from docx import Document
@@ -7,9 +8,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from PIL import Image
 
 from .i18n import get_text
-from .models import GuideSection
+from .models import GuideSection, PageSnapshot, SemanticElement
+from .utils import ensure_dir, safe_filename_from_url
 
 
 # Color scheme (RGB)
@@ -191,3 +194,110 @@ def write_guide(path: Path, root_url: str, sections: list[GuideSection], locale:
     """Render guide sections to a DOCX file."""
     doc = build_guide(root_url, sections, locale)
     doc.save(str(path))
+
+
+def attach_focused_step_images(
+    section: GuideSection,
+    snapshot: PageSnapshot,
+    crops_dir: Path,
+    top_padding: int,
+    bottom_padding: int,
+) -> GuideSection:
+    """Generate focused crops for each guide step when the step references a visible UI control."""
+    if snapshot.screenshot_path is None or not snapshot.screenshot_path.exists():
+        return section
+
+    ensure_dir(crops_dir)
+
+    for step in section.steps:
+        label_candidates = _extract_bracket_labels(step.action_bullets)
+        best_match = _find_best_element_match(snapshot.elements, label_candidates)
+        if best_match is None:
+            step.screenshot_path = snapshot.screenshot_path
+            continue
+
+        crop_path = crops_dir / f"{safe_filename_from_url(snapshot.url)}-step-{step.step_number:02d}.png"
+        created = _crop_full_width_window(
+            snapshot.screenshot_path,
+            crop_path,
+            int(best_match.bbox.y),
+            int(best_match.bbox.height),
+            top_padding,
+            bottom_padding,
+        )
+        step.screenshot_path = crop_path if created else snapshot.screenshot_path
+
+    return section
+
+
+def _extract_bracket_labels(action_bullets: list[str]) -> list[str]:
+    labels: list[str] = []
+    for bullet in action_bullets:
+        labels.extend(match.strip() for match in re.findall(r"\[([^\]]+)\]", bullet) if match.strip())
+    return labels
+
+
+def _normalize_label(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+def _find_best_element_match(elements: list[SemanticElement], labels: list[str]) -> SemanticElement | None:
+    if not labels:
+        return None
+
+    normalized_labels = [_normalize_label(item) for item in labels if item.strip()]
+    best_score = 0
+    best_element: SemanticElement | None = None
+
+    for element in elements:
+        if element.bbox is None:
+            continue
+        candidate_texts = [
+            element.text,
+            element.aria_label,
+            element.placeholder,
+            element.name,
+            element.element_id,
+        ]
+        normalized_candidates = [_normalize_label(text) for text in candidate_texts if text]
+        if not normalized_candidates:
+            continue
+
+        score = 0
+        for label in normalized_labels:
+            for candidate in normalized_candidates:
+                if label == candidate:
+                    score = max(score, 100)
+                elif label in candidate or candidate in label:
+                    score = max(score, 60)
+                else:
+                    overlap = len(set(label.split()) & set(candidate.split()))
+                    score = max(score, overlap * 10)
+
+        if score > best_score:
+            best_score = score
+            best_element = element
+
+    return best_element if best_score >= 20 else None
+
+
+def _crop_full_width_window(
+    source_path: Path,
+    target_path: Path,
+    bbox_y: int,
+    bbox_height: int,
+    top_padding: int,
+    bottom_padding: int,
+) -> bool:
+    try:
+        with Image.open(source_path) as img:
+            width, height = img.size
+            top = max(0, bbox_y - top_padding)
+            bottom = min(height, bbox_y + max(1, bbox_height) + bottom_padding)
+            if bottom <= top:
+                return False
+            cropped = img.crop((0, top, width, bottom))
+            cropped.save(target_path)
+            return True
+    except Exception:
+        return False

@@ -183,13 +183,18 @@ Rules:
 - Prefer 3-8 steps per page.
 - Do not invent features not visible in markdown or screenshot.
 - Use any provided business context as guidance, but prioritize actual page evidence.
+- If a goal context is provided, focus only on actions and observations relevant to that goal.
+- Exclude unrelated navigation paths and secondary features.
 - Return all text in English.
 """,
             "no_business_context": "No business context provided.",
+            "no_goal_context": "No specific goal provided.",
             "analyze_page": "Generate a step-by-step guide for this page.",
             "title": "Title",
             "template": "Template",
             "business_context": "Business Context",
+            "goal_context": "Goal Context",
+            "intent_scope_rules": "Scope rule: include only steps that contribute directly to the goal context.",
             "markdown": "Markdown",
             "guide_title": "Generated Guide",
             "page_guide": "Guide",
@@ -376,13 +381,18 @@ Zasady:
 - Preferuj od 3 do 8 kroków na stronę.
 - Nie wymyślaj funkcji niewidocznych w markdown ani na zrzucie ekranu.
 - Używaj podanego kontekstu biznesowego jako wskazówkę, ale priorytet dla faktycznych dowodów ze strony.
+- Jeśli podano kontekst celu, skup się tylko na akcjach i obserwacjach związanych z tym celem.
+- Wyklucz niezwiązane ścieżki nawigacji i funkcje poboczne.
 - Zwróć całą treść po polsku.
 """,
             "no_business_context": "Nie podano kontekstu biznesowego.",
+            "no_goal_context": "Nie podano konkretnego celu.",
             "analyze_page": "Wygeneruj przewodnik krok po kroku dla tej strony.",
             "title": "Tytuł",
             "template": "Szablon",
             "business_context": "Kontekst biznesowy",
+            "goal_context": "Kontekst celu",
+            "intent_scope_rules": "Reguła zakresu: uwzględnij tylko kroki, które bezpośrednio wspierają realizację celu.",
             "markdown": "Markdown",
             "guide_title": "Wygenerowany przewodnik",
             "page_guide": "Przewodnik",
