@@ -91,6 +91,104 @@ class Analyst:
             )
         ]
 
+    async def decide_next_links(self, snapshot: PageSnapshot) -> list[str]:
+        """Ask the LLM which internal links on this page should be followed to achieve the goal."""
+        goal = self.config.goal_context or ""
+        if not goal:
+            return snapshot.internal_links
+
+        nav_text = get_text(self.config.locale)["navigator"]
+        valid_internal: set[str] = set(snapshot.internal_links)
+
+        # Build a compact label→url map from anchor elements
+        link_map: dict[str, str] = {}
+        for el in snapshot.elements:
+            if el.tag == "a" and el.href and el.href in valid_internal:
+                label = (el.text or el.aria_label or "").strip()[:80]
+                if label and label not in link_map:
+                    link_map[label] = el.href
+
+        if not link_map:
+            return []
+
+        link_lines = "\n".join(f"  [{label}] -> {url}" for label, url in link_map.items())
+        prompt = (
+            f"Goal: {goal}\n\n"
+            f"Page: {snapshot.url}\n"
+            f"Title: {snapshot.title}\n\n"
+            f"Available links:\n{link_lines}\n\n"
+            "Which links should be followed to achieve this goal?"
+        )
+
+        raw = await self._request_text_only(prompt, system_prompt=nav_text["system_prompt"])
+        parsed = _extract_json(raw)
+
+        follow_items = _get_list(parsed, "follow")
+        result: list[str] = []
+        for item in follow_items:
+            url = item.get("url", "") if isinstance(item, dict) else str(item)
+            if not url:
+                continue
+            # Exact match first
+            if url in valid_internal:
+                if url not in result:
+                    result.append(url)
+                continue
+            # Substring / suffix match (LLM may return path only)
+            matched = next(
+                (u for u in valid_internal if url and (u.endswith(url) or url in u)),
+                None,
+            )
+            if matched and matched not in result:
+                result.append(matched)
+                continue
+            # Reverse lookup: LLM returned a visible label instead of URL
+            if url in link_map and link_map[url] not in result:
+                result.append(link_map[url])
+
+        return result
+
+    async def _request_text_only(self, prompt: str, system_prompt: str) -> str:
+        if self.config.provider == "anthropic":
+            return await self._request_anthropic_text(prompt, system_prompt)
+        return await self._request_openai_text(prompt, system_prompt)
+
+    async def _request_openai_text(self, prompt: str, system_prompt: str) -> str:
+        api_key, base_url = self._resolve_openai_credentials()
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:
+            raise RuntimeError("OpenAI SDK is not installed.") from exc
+
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        response = await client.chat.completions.create(
+            model=self.model,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return response.choices[0].message.content or "{}"
+
+    async def _request_anthropic_text(self, prompt: str, system_prompt: str) -> str:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required for Anthropic analysis.")
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError as exc:
+            raise RuntimeError("Anthropic SDK is not installed.") from exc
+
+        client = AsyncAnthropic(api_key=api_key)
+        response = await client.messages.create(
+            model=self.model,
+            max_tokens=800,
+            system=system_prompt,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text if response.content else "{}"
+
     def _build_prompt(self, snapshot: PageSnapshot) -> str:
         business_context = self.config.business_context or self.text["no_business_context"]
         return f"""{self.text['analyze_page']}

@@ -28,6 +28,7 @@ class RunConfig:
     output_format: str = "report"
     goal_context: str | None = None
     intent_only: bool = False
+    action_runner: bool = False
     crop_top_padding: int = 180
     crop_bottom_padding: int = 260
 

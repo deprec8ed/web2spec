@@ -85,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=260,
         help="Bottom padding in pixels when cropping step screenshots around matched UI controls.",
     )
+    parser.add_argument(
+        "--action-runner",
+        action="store_true",
+        help="Use LLM to decide which links to follow on each page instead of queueing all internal links.",
+    )
     return parser
 
 
@@ -130,6 +135,7 @@ def main() -> None:
         output_format=args.output_format,
         goal_context=_load_goal_context(args),
         intent_only=args.intent_only,
+        action_runner=args.action_runner,
         crop_top_padding=max(0, args.crop_top_padding),
         crop_bottom_padding=max(0, args.crop_bottom_padding),
     )

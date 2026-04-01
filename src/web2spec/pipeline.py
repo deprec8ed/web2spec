@@ -96,7 +96,18 @@ class Web2SpecPipeline:
 
                     if current.depth < self.config.depth_limit:
                         queued_urls = {item.url for item in pending}
-                        candidate_links = _prioritize_links_for_goal(snapshot.internal_links, self.config.goal_context)
+
+                        if self.config.action_runner and analyst is not None:
+                            candidate_links = await analyst.decide_next_links(snapshot)
+                            self._log(
+                                f"[action-runner] LLM selected {len(candidate_links)} link(s) to follow"
+                                + (f": {candidate_links}" if candidate_links else "")
+                            )
+                        else:
+                            candidate_links = _prioritize_links_for_goal(
+                                snapshot.internal_links, self.config.goal_context
+                            )
+
                         for link in candidate_links:
                             if link in visited or link in queued_urls:
                                 continue
