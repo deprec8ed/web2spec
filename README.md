@@ -1,323 +1,222 @@
 # Web2Spec
 
-Web2Spec to proof-of-concept pipeline, który crawluje żywą stronę internetową, wyciąga z niej maszynowo czytelną mapę interakcji, przekształca każdą stronę do formy przyjaznej dla LLM i używa modeli multimodalnych do generowania dokumentacji produktowej.
+Web2Spec is a Playwright-based crawler that captures real pages, distills UI structure into machine-readable artifacts, and optionally uses multimodal LLM analysis to produce documentation outputs.
 
-## Co robi ten PoC
+## What It Generates
 
-1. Używa Playwright do crawlowania dynamicznych stron w trybie headless.
-2. Wyciąga semantyczną strukturę UI z elementów `<a>`, `<button>`, `<input>`, `<form>` i `<nav>`.
-3. Buduje ograniczoną mapę wewnętrznych linków.
-4. Generuje oczyszczony markdown i zrzuty ekranu dla każdej odwiedzonej strony.
-5. Opcjonalnie rysuje obramowania elementów na zrzutach ekranu.
-6. Przyjmuje opcjonalny kontekst biznesowy, aby lepiej ukierunkować analizę LLM.
-7. Wysyła markdown i zrzut ekranu do Azure OpenAI, OpenAI lub Claude w celu wygenerowania:
-   - dokumentacji funkcjonalnej
-   - historii użytkownika
-   - mapy intencji CTA
-8. Składa finalne artefakty `report.md`, `dashboard.html`, `site_map.json` i `analysis.json`.
+Depending on `--output-format`, the pipeline can produce:
 
-## Instalacja
+- `report.md`: human-readable page-by-page documentation.
+- `dashboard.html`: interactive visual viewer of screenshots, markdown, and analysis.
+- `site_map.json`: structured crawl output (pages, semantic elements, links, errors).
+- `analysis.json`: structured LLM analysis per URL.
+- `guide.docx`: procedural user guide document (section/step style).
+- `markdown/`: one distilled markdown file per page.
+- `screenshots/`: full-page screenshots per crawled page.
+- `overlays/`: optional annotated screenshots with element bounding boxes.
+
+## Installation
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+python -m pip install -e .[dev]
 python -m playwright install chromium
 ```
 
-Jeżeli pobranie przeglądarki przez Playwright nie działa na Twojej maszynie, crawler może użyć lokalnie zainstalowanej przeglądarki. Repo automatycznie wykrywa `/Applications/Google Chrome.app` i `/Applications/Chromium.app` na macOS. Możesz też jawnie ustawić `--browser-channel chrome`.
+If Playwright-managed Chromium is unavailable, use local browser options (`--browser-channel` or `--browser-executable-path`).
 
-## Zmienne środowiskowe
+## LLM Credentials
 
-Przed uruchomieniem analizy ustaw jedną z poniższych konfiguracji:
+Set credentials only for the provider you use:
 
 ```bash
+# Azure OpenAI
 export AZURE_API_KEY=...
 export AZURE_BASE_URL="https://<resource>.openai.azure.com/openai/v1"
+
+# OpenAI
 export OPENAI_API_KEY=...
+
+# Anthropic
 export ANTHROPIC_API_KEY=...
 ```
 
-Azure OpenAI jest domyślnym dostawcą. Domyślny model to `gpt-5.4`, co powinno odpowiadać nazwie wdrożenia w Azure. Jeżeli chcesz użyć drugiego deploymentu, ustaw `--model gpt-5`.
+Defaults:
 
-## Użycie
+- Provider: `azure-openai`
+- Model for Azure: `gpt-5.4`
+- Locale: `pl`
+
+## Quick Start
 
 ```bash
 source .venv/bin/activate
-export AZURE_API_KEY="key-here"
-export AZURE_BASE_URL="https://oai-hackathon-tst-swecen-001.openai.azure.com/openai/v1"
 
 web2spec https://example.com \
+  --output-dir outputs/example \
   --depth-limit 2 \
+  --max-pages 20 \
   --provider azure-openai \
   --model gpt-5.4 \
   --locale pl \
-  --business-context "Platforma SaaS B2B do planowania produktu i analizy." \
-  --output-dir outputs/example
+  --output-format both
 ```
 
-Przydatne flagi:
+## CLI Reference
 
-- `--skip-analysis`: pomija fazę analizy przez LLM.
-- `--provider openai`: używa publicznego OpenAI API.
-- `--provider anthropic`: używa Anthropic.
-- `--model ...`: nadpisuje nazwę modelu.
-- `--locale pl|en`: przełącza język wygenerowanych artefaktów i odpowiedzi modelu.
-- `--browser-channel chrome`: używa lokalnie zainstalowanego Chrome zamiast przeglądarki zarządzanej przez Playwright.
-- `--browser-executable-path /path/to/browser`: jawna ścieżka do przeglądarki.
-- `--no-overlay`: pomija generowanie nakładek z obramowaniami.
-- `--max-pages 20`: ogranicza liczbę stron w kolejce dla PoC.
-- `--business-context-file site_context.md`: wczytuje kontekst biznesowy z pliku.
-- `--quiet`: ukrywa logi postępu.
+Usage:
 
-## Układ wyników
+```bash
+web2spec URL [options]
+```
+
+Required:
+
+- `url` Starting URL to crawl.
+
+General options:
+
+- `--output-dir PATH` Output directory. Default: `outputs/run`
+- `--depth-limit N` Maximum crawl depth from start URL. Default: `2`
+- `--max-pages N` Maximum number of queued/visited pages. Default: `20`
+- `--quiet` Suppress progress logs.
+
+Analysis options:
+
+- `--skip-analysis` Disable LLM analysis stage.
+- `--provider azure-openai|openai|anthropic` LLM provider. Default: `azure-openai`
+- `--model NAME` Override model/deployment name.
+- `--business-context TEXT` Inline business context appended to prompts.
+- `--business-context-file FILE` Read business context from file.
+- `--locale pl|en` Localization for generated text and report fields. Default: `pl`
+
+Output options:
+
+- `--output-format report|guide|both` Choose output type(s). Default: `report`
+- `--no-overlay` Disable generation of overlay images.
+
+Browser options:
+
+- `--show-browser` Run in headed mode (not headless).
+- `--browser-channel chrome|msedge` Use locally installed browser channel.
+- `--browser-executable-path PATH` Explicit browser executable path.
+
+## Output Modes
+
+`--output-format report`
+
+- Writes: `report.md`, `dashboard.html`, `site_map.json`, `analysis.json`, plus crawl assets.
+
+`--output-format guide`
+
+- Writes: `guide.docx`, plus crawl assets.
+
+`--output-format both`
+
+- Writes both report artifacts and `guide.docx`.
+
+Important note about `--skip-analysis`:
+
+- No LLM call is made.
+- Report files are still generated, but analysis sections are empty/skipped.
+- Guide file is still generated, but it may contain no or minimal procedural content because steps are produced by LLM analysis.
+
+## Recommended Commands
+
+Report-only crawl:
+
+```bash
+web2spec https://target-site.example \
+  --output-dir outputs/target-report \
+  --depth-limit 2 \
+  --output-format report
+```
+
+Guide-only crawl:
+
+```bash
+web2spec https://target-site.example \
+  --output-dir outputs/target-guide \
+  --depth-limit 2 \
+  --output-format guide \
+  --provider azure-openai
+```
+
+All artifacts in one run:
+
+```bash
+web2spec https://target-site.example \
+  --output-dir outputs/target-all \
+  --depth-limit 2 \
+  --output-format both
+```
+
+## How To Read Results
+
+Start with this order:
+
+1. `dashboard.html`
+   - Best first-pass visual QA.
+   - Use it to compare screenshot, overlay, markdown, and analysis side by side.
+
+2. `report.md`
+   - Best narrative, page-by-page summary.
+   - Good for quick review with product/stakeholder teams.
+
+3. `analysis.json`
+   - Best structured LLM output for downstream automation.
+   - Includes functional documentation, user stories, intent map, and raw response.
+
+4. `site_map.json`
+   - Best source-of-truth crawl structure.
+   - Includes headings, semantic elements, internal links, and asset paths.
+
+5. `guide.docx` (if guide mode enabled)
+   - Best for process-style user documentation.
+   - Organized as section + numbered steps with screenshot blocks.
+
+## Output Directory Layout
+
+Typical `--output-format both` tree:
 
 ```text
 outputs/example/
-  analysis.json
-  dashboard.html
+  guide.docx
   report.md
+  dashboard.html
   site_map.json
+  analysis.json
   markdown/
   screenshots/
   overlays/
 ```
 
-## Uwagi
-
-- Crawler pozostaje wewnątrz domeny startowej.
-- Głębokość liczona jest od adresu startowego jako poziom `0`.
-- Prompt LLM wymusza odpowiedź w formacie JSON i zabrania wymyślania funkcji niewidocznych na stronie.
-- Generowanie overlay jest opcjonalne i działa tylko wtedy, gdy dostępny jest Pillow.
-
-## Jak uruchomić crawl
-
-1. Utwórz i aktywuj środowisko wirtualne:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-2. Zainstaluj zależności:
-
-```bash
-python -m pip install -e .[dev]
-python -m playwright install chromium
-```
-
-3. Ustaw dane dostępowe Azure OpenAI:
-
-```bash
-export AZURE_API_KEY="key-here"
-export AZURE_BASE_URL="https://oai-hackathon-tst-swecen-001.openai.azure.com/openai/v1"
-```
-
-4. Przygotuj krótki kontekst biznesowy. Możesz zacząć od `site_context.example.md`.
-
-5. Uruchom crawler:
-
-```bash
-web2spec https://target-site.example \
-  --provider azure-openai \
-  --model gpt-5.4 \
-  --depth-limit 2 \
-  --max-pages 15 \
-  --business-context-file site_context.example.md \
-  --output-dir outputs/target-site
-```
-
-6. Sprawdź wyniki:
-
-- `outputs/target-site/dashboard.html`
-- `outputs/target-site/report.md`
-- `outputs/target-site/site_map.json`
-- `outputs/target-site/analysis.json`
-
-Jeżeli Playwright-managed Chromium jest niedostępny, możesz dalej działać na lokalnym Chrome lub Chromium.
-
-## Sugerowany workflow
-
-1. Napisz krótki `site_context.md`, który opisuje czym zajmuje się firma, kim są użytkownicy i jakie są cele konwersji.
-2. Uruchom crawler na małej głębokości.
-3. Przejrzyj `report.md` lub `dashboard.html` pod kątem halucynacji, brakujących flow i jakości interpretacji CTA.
-4. Zwiększ głębokość albo doprecyzuj kontekst biznesowy, jeżeli pierwszy przebieg jest zbyt ogólny.
-
-## Który plik traktować jako bazowy artefakt dokumentacyjny?
-
-Każdy wynik ma inne zastosowanie:
-
-- `site_map.json`: strukturalne źródło prawdy. Tu znajduje się surowy wynik crawla, semantyczne elementy, linki, nagłówki i ścieżki do obrazów.
-- `markdown/*.md`: najlepsza strona-baza przed analizą LLM. To właśnie ten oczyszczony markdown trafia do modelu.
-- `analysis.json`: najlepszy ustrukturyzowany artefakt po analizie LLM. Używaj go, jeśli chcesz dalej programowo konsumować wygenerowaną dokumentację.
-- `report.md`: najlepsza czytelna forma tekstowa dla człowieka.
-- `dashboard.html`: najlepsza forma wizualnego przeglądu.
-
-Jeżeli pytanie brzmi: „jaki jeden strukturalny artefakt powinien być bazą dalszej dokumentacji?”, to zwykle odpowiedź jest taka:
-
-1. `analysis.json`, jeśli chcesz korzystać z już wygenerowanej dokumentacji.
-2. `site_map.json`, jeśli chcesz używać surowego wyniku crawla jako źródła prawdy i budować własną warstwę dokumentacyjną.
-
-## Gdzie zmieniać to, co jest analizowane?
-
-Są trzy główne miejsca:
-
-- `src/web2spec/cartographer.py`
-  Steruje tym, co jest wyciągane z żywej strony.
-  Edytuj `EXTRACTION_SCRIPT`, jeśli chcesz pobierać więcej elementów DOM, inne atrybuty albo dodatkowe metadane strony.
-
-- `src/web2spec/distiller.py`
-  Steruje tym, jak surowa struktura jest zamieniana na oczyszczony markdown.
-  Edytuj ten plik, jeśli chcesz:
-  - zachować więcej lub mniej linków
-  - dołączyć więcej kontekstu tekstowego
-  - inaczej streszczać nawigację
-  - zmienić układ i sekcje markdownu
-
-- `src/web2spec/analyst.py`
-  Steruje etapem rozumowania przez LLM.
-  Edytuj `SYSTEM_PROMPT`, jeśli chcesz zmienić to, co model ma wywnioskować i w jakiej formie ma to zwrócić.
-  Edytuj `_build_prompt()`, jeśli chcesz dosłać modelowi dodatkowy kontekst.
-
-## Gdzie zmieniać to, co jest zwracane?
-
-Jeżeli chcesz dodać nową sekcję do zwracanej dokumentacji, na przykład:
-
-- kryteria akceptacji
-- ryzyka
-- notatki deweloperskie
-- sugestie testów
-- inwentaryzację komponentów
-
-to zmień te miejsca razem:
-
-1. `src/web2spec/models.py`
-   Dodaj nowe pole do `PageAnalysis` i, jeśli trzeba, nowy dataclass podobny do `CTAIntent`.
-
-2. `src/web2spec/analyst.py`
-   Zaktualizuj `SYSTEM_PROMPT`, aby model wiedział, że ma zwrócić nowe pole.
-   Zaktualizuj `analyze()`, aby parser potrafił odczytać to pole z JSON-a.
-
-3. `src/web2spec/report.py`
-   Zaktualizuj `build_report()`, aby nowe pole pojawiło się w `report.md`.
-   Zaktualizuj `write_dashboard()`, jeśli ma się też pojawić w `dashboard.html`.
-
-4. Opcjonalnie `tests/`
-   Dodaj lub popraw testy, żeby nowy kształt odpowiedzi był objęty weryfikacją.
-
-Krótko: schema modelu, parser i renderery wyników muszą pozostać ze sobą zgodne.
-
-## Guardrail przeciw analizie tej samej strony dwa razy
-
-Pipeline ma już zabezpieczenie przed podwójną analizą tej samej strony.
-
-Działa ono w trzech krokach:
-
-1. `src/web2spec/utils.py`
-   `canonicalize_url()` normalizuje URL przed użyciem go w pętli crawla.
-   To właśnie scala przypadki takie jak `https://docs.qmk.fm` i `https://docs.qmk.fm/`.
-
-2. `src/web2spec/pipeline.py`
-   Pętla utrzymuje zbiór `visited`. Jeżeli kanoniczny URL został już przetworzony, nie zostanie przetworzony drugi raz.
-
-3. `src/web2spec/pipeline.py`
-   Przed dodaniem nowo znalezionych linków do kolejki pipeline sprawdza też `queued_urls`, więc ta sama strona nie zostanie dodana wielokrotnie zanim zostanie odwiedzona.
-
-Ważne ograniczenie:
-
-- Różne query stringi są obecnie traktowane jako różne strony.
-- Jeśli ten sam content jest dostępny pod wieloma rzeczywiście różnymi URL-ami, mogą one nadal zostać przeskanowane osobno, dopóki nie dodasz mocniejszych zasad kanonikalizacji.
-
-## Szczegółowy przebieg procesu
-
-Poniżej pełny pipeline krok po kroku.
-
-### 1. Parsowanie wejścia CLI
-
-Plik:
-
-- `src/web2spec/cli.py`
-
-Co się dzieje:
-
-- Użytkownik podaje URL startowy i opcjonalne flagi, takie jak głębokość, provider, model, katalog wynikowy i kontekst biznesowy.
-- CLI buduje obiekt `RunConfig`.
-- Konfiguracja trafia do głównego pipeline.
-
-Dlaczego to ważne:
-
-- To tutaj kontrolujesz zachowanie programu bez zmiany kodu.
-
-### 2. Inicjalizacja stanu pipeline
-
-Plik:
-
-- `src/web2spec/pipeline.py`
-
-Co się dzieje:
-
-- Startowy URL jest kanonikalizowany.
-- Tworzony jest katalog wynikowy.
-- Pipeline inicjalizuje:
-  - kolejkę oczekujących URL-i
-  - zbiór odwiedzonych stron
-  - kolekcję stron
-  - kolekcję analiz
-  - listę błędów
-
-Dlaczego to ważne:
-
-- To warstwa orkiestracji.
-- Kontroluje pętlę crawlowania, deduplikację i generowanie wyników.
-
-### 3. Playwright uruchamia kontekst przeglądarki
-
-Plik:
-
-- `src/web2spec/cartographer.py`
-
-Co się dzieje:
-
-- Startuje Playwright.
-- Uruchamiana jest kompatybilna przeglądarka Chromium.
-- Projekt preferuje lokalnie zainstalowane Chromium lub Chrome, jeśli są dostępne.
-- Tworzony jest kontekst przeglądarki z określonym viewportem.
-
-Dlaczego to ważne:
-
-- To pozwala obsługiwać dynamiczne SPA, zamiast tylko pobierać statyczny HTML.
-
-### 4. Przejście na stronę
-
-Plik:
-
-- `src/web2spec/cartographer.py`
-
-Co się dzieje:
-
-- Crawler otwiera stronę z kolejki.
-- Nawigacja używa bardziej odpornej strategii niż ścisłe `networkidle`:
-  - najpierw `domcontentloaded`
-  - potem `load`
-  - na końcu krótki `networkidle`, jeśli jest osiągalny
-
-Dlaczego to ważne:
-
-- Wiele stron nigdy nie osiąga stabilnego `networkidle`.
-- To poprawia odporność na realnych stronach dokumentacyjnych i SPA.
-
-### 5. Semantyczna ekstrakcja w przeglądarce
-
-Plik:
-
-- `src/web2spec/cartographer.py`
-
-Co się dzieje:
-
-- `EXTRACTION_SCRIPT` wykonuje się w kontekście strony.
-- Wyciąga:
-  - tytuł
-  - nagłówki
+## Practical Workflow
+
+1. Start with `--depth-limit 1` or `2` and a smaller `--max-pages`.
+2. Review `dashboard.html` for coverage and extraction quality.
+3. Tune `--business-context` or `--business-context-file` to improve analysis focus.
+4. Re-run with deeper crawl when quality is acceptable.
+5. Use `--output-format guide` or `both` for user-facing procedural docs.
+
+## Implementation Pointers
+
+- Crawl/extraction: `src/web2spec/cartographer.py`
+- Markdown distillation + overlays: `src/web2spec/distiller.py`
+- LLM analysis/parsing: `src/web2spec/analyst.py`
+- Report/dashboard writers: `src/web2spec/report.py`
+- DOCX guide writer: `src/web2spec/guide.py`
+- Pipeline orchestration: `src/web2spec/pipeline.py`
+- CLI flags: `src/web2spec/cli.py`
+
+## Known Constraints
+
+- Crawl is constrained to the start domain.
+- Depth is counted from the start URL as depth `0`.
+- URL canonicalization prevents many duplicates, but distinct query-string URLs may still be treated as separate pages.
+- Overlay generation requires Pillow.
+- Guide quality depends on LLM availability and prompt quality when analysis is enabled.
   - semantyczne elementy interaktywne
   - metadane takie jak `aria-label`, `id`, `name`, `placeholder`, `type`
   - przybliżone współrzędne DOM przez bounding boxy
