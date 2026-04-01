@@ -9,7 +9,7 @@ from .cartographer import Cartographer
 from .config import RunConfig
 from .distiller import Distiller
 from .guide import attach_focused_step_images, write_guide
-from .models import GuideDocument, GuideSection, PageAnalysis, PageSnapshot, PipelineResult, QueueItem
+from .models import GuideSection, PageAnalysis, PageSnapshot, PipelineResult, QueueItem
 from .report import build_report, write_analysis, write_dashboard, write_site_map
 from .utils import canonicalize_url, ensure_dir
 

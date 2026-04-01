@@ -95,6 +95,11 @@ Output options:
 
 - `--output-format report|guide|both` Choose output type(s). Default: `report`
 - `--no-overlay` Disable generation of overlay images.
+- `--goal-context TEXT` Inline goal/intention used to focus guide generation.
+- `--goal-context-file FILE` Read goal/intention from file.
+- `--intent-only` With goal context, include only goal-relevant pages in the guide.
+- `--crop-top-padding N` Top padding in px for step screenshot crops. Default: `180`
+- `--crop-bottom-padding N` Bottom padding in px for step screenshot crops. Default: `260`
 
 Browser options:
 
@@ -111,6 +116,7 @@ Browser options:
 `--output-format guide`
 
 - Writes: `guide.docx`, plus crawl assets.
+- When guide steps reference UI labels in `[brackets]`, the tool tries to crop screenshots to the matched UI area (full width + vertical padding) and stores them under `guide_crops/`.
 
 `--output-format both`
 
@@ -141,6 +147,17 @@ web2spec https://target-site.example \
   --depth-limit 2 \
   --output-format guide \
   --provider azure-openai
+
+Goal-focused guide (e.g. open an account):
+
+```bash
+web2spec https://www.credit-agricole.pl/klienci-indywidualni/konta \
+  --output-dir outputs/ca-konta-goal \
+  --depth-limit 2 \
+  --output-format guide \
+  --goal-context "Open a personal account in a Polish bank" \
+  --intent-only
+```
 ```
 
 All artifacts in one run:
@@ -175,6 +192,7 @@ Start with this order:
 5. `guide.docx` (if guide mode enabled)
    - Best for process-style user documentation.
    - Organized as section + numbered steps with screenshot blocks.
+  - If a step action references a control (for example `Kliknij [Otwórz konto]`), check `guide_crops/` for focused screenshots used in the guide.
 
 ## Output Directory Layout
 
